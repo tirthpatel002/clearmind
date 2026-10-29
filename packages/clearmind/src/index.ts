@@ -16,3 +16,5 @@ export { hasNebiusKey, nebiusChat, nebiusEmbedder, nebiusProvider } from "./prov
 export { fmtLog, fmtMemory } from "./format.js";
 export { main as runCli, parseArgs, USAGE } from "./cli.js";
 export { ANSWER_PROMPT } from "./prompts.js";
+export { RETRIEVAL_DEFAULTS, enhancedOn, guardOn } from "./recall/engine.js";
+export type { Retrieval } from "./recall/engine.js";

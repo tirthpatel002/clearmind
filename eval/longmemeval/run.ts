@@ -20,7 +20,7 @@ export interface EvalConfig {
   connector_config: string;
   answer_model: string; judge_model: string; judge_label: string; embed_model: string;
   chunk_max_chars: number; k: number; metrics_depth: number;
-  clearmind: { recall: CmConfig["recall"] };
+  clearmind: { recall: CmConfig["recall"]; features?: CmConfig["features"]; retrieval?: CmConfig["retrieval"] };
   answer: { max_tokens: number; temperature: number; date_instruction: string };
   judge: { max_tokens: number; temperature: number };
   concurrency: { questions: number; model_calls: number; embed_requests: number; embed_batch: number };
@@ -166,7 +166,7 @@ async function evalQuestion(q: Question): Promise<Record<string, unknown>> {
   const dir = join(tmpdir(), "lme-cm", run.id, q.question_id); rmSync(dir, { recursive: true, force: true });
   const lat: Record<string, number> = {}; const t = () => performance.now();
   const answerCalls: any[] = []; const tr = { truncations: [] as string[] };
-  const cmCfg: CmConfig = { ...structuredClone(DEFAULTS), recall: cfg.clearmind.recall };
+  const cmCfg: CmConfig = { ...structuredClone(DEFAULTS), recall: cfg.clearmind.recall, features: cfg.clearmind.features, retrieval: cfg.clearmind.retrieval };
   const chatFn = async (messages: { role: string; content: string }[], o: { json?: boolean; maxTokens?: number } = {}) => {
     const msgs = messages.map((m, i) => (i === 0 && m.role === "system" ? { ...m, content: `${m.content}\n${cfg.answer.date_instruction.replace("{question_date}", q.question_date)}` } : m)) as any;
     const t0 = Date.now();

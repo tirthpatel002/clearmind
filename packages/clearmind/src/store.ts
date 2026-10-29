@@ -3,7 +3,9 @@
 import { mkdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
-import { AgentMemory, HybridRetriever, SqliteStore } from "agentmemory";
+import { AgentMemory, hardForget, HybridRetriever, SqliteStore } from "agentmemory";
+import type { RecallConfidence } from "agentmemory";
+import { buildEngine, retrieval as resolveRetrieval, type Engine } from "./recall/engine.js";
 import type { Embedder, EventInput, Lesson, LLM, Outcome, Scope } from "agentmemory";
 import { answerability, cosineSim, isNoMemoryReply, lexicalCoverage, NO_MEMORY } from "./abstain.js";
 import { DEFAULTS, validUserId } from "./config.js";
@@ -78,6 +80,7 @@ export class Clearmind {
   private insightCache: { sig: string; value: Insights } | null = null;
   private insightJob: Promise<Insights> | null = null;
   private titling = false;
+  private engine: Engine;
 
   constructor(private opts: ClearmindOptions) {
     if (!validUserId(opts.ownerId)) throw new Error(`invalid user id "${opts.ownerId}"`);
@@ -87,10 +90,11 @@ export class Clearmind {
     this.scope = { namespace: "clearmind", userId: opts.ownerId, agentId: "owner" };
     const minSimilarity = opts.minSimilarity ?? this.cfg.recall.minSimilarity;
     const minLexicalSimilarity = this.cfg.recall.minLexicalSimilarity;
+    this.engine = buildEngine(opts.dir, resolveRetrieval(this.cfg.retrieval), { now: this.now, embedder: opts.embedder });
     this.mem = new AgentMemory({
-      store: new SqliteStore({ path: join(opts.dir, "memory.db") }),
+      store: this.engine.store,
       embedder: opts.embedder,
-      retriever: new HybridRetriever({ now: this.now }),
+      retriever: this.engine.retriever,
       config: { minSimilarity, minLexicalSimilarity, quarantine: { trialSlots: 0 } },
     });
     this.lessonsMem = new AgentMemory({
@@ -296,6 +300,17 @@ export class Clearmind {
   }
 
   /** Resolved opt-in features (config.features; all off by default). */
+  /** Confidence of the last recall when config.retrieval enables EnhancedRetriever; otherwise null. */
+  get lastRecallConfidence(): RecallConfidence | null { return this.engine.enhanced?.lastConfidence ?? null; }
+
+  /** Hard-delete a memory (right to forget); needs config.retrieval.hardForget. Audited when audit is on. */
+  async forget(id: string): Promise<boolean> {
+    if (!resolveRetrieval(this.cfg.retrieval).hardForget) throw new Error("forget is disabled; set retrieval.hardForget");
+    await this.mem.init();
+    this.statsCache = null;
+    return hardForget(this.mem.store, this.scope, id, { audit: this.engine.audit ?? undefined });
+  }
+
   get features(): Features { return resolveFeatures((this.cfg as any).features); }
 
   /** recall() plus the opt-in time-aware (6), decomposition (7) and injection-drop (17) stages. */

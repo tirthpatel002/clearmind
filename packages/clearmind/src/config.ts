@@ -17,6 +17,8 @@ export interface Config {
   ui: { pageSize: number; clusterAbove: number; maxNodes: number };
   import: { maxItems: number; maxBytes: number };
   /** Opt-in recall/answer features (see features/config.ts); omitted = all off. */
+  /** Opt-in agentmemory EnhancedRetriever/GuardedStore options (see recall/engine.ts); omitted = current path. */
+  retrieval?: Partial<import("./recall/engine.js").Retrieval>;
   features?: { [K in keyof import("./features/config.js").Features]?: Partial<import("./features/config.js").Features[K]> };
 }
 
