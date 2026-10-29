@@ -95,6 +95,13 @@ H("- Non-standard judge (Glimmer); exact-abstention rule added; raw verdicts rep
   "- Supersession is not exercised by raw-turn ingest (no keyed facts); knowledge-update relies on the prompt's 'prefer the most recent' rule and dates.\n"
   "- Modal costs are estimates.\n")
 H("## 8. Frozen config\n"); H("```json\n" + json.dumps({k: v for k, v in cfg.items() if k != "prices"}, indent=1) + "\n```\n")
+for _f in ("LATENCY.md", "COST_COMPARE.md"):
+    if os.path.exists(f"{ROOT}/{_f}"): out.append(open(f"{ROOT}/{_f}").read())
+ds = f"{ROOT}/dataset_size.json"
+if os.path.exists(ds):
+    d = J(ds); H("## Dataset size\n"); H(f"Tokenizer: {d['tokenizer']}.\n")
+    table(["split", "questions", "sessions (per-question sum)", "messages/turns", "tokens", "unique sessions", "unique messages", "unique tokens", "mean sessions/question", "mean tokens/question"],
+      [[k, v["questions"], f"{v['sessions']:,}", f"{v['messages']:,}", f"{v['tokens']:,}", f"{v['unique_sessions']:,}", f"{v['unique_messages']:,}", f"{v['unique_tokens']:,}", f"{v['mean_sessions']:.1f}", f"{v['mean_tokens']:,.0f}"] for k, v in (("all 500", d["all500"]), ("held-out 450", d["heldout450"]))])
 md = "\n".join(out); open(f"{ROOT}/REPORT.md", "w").write(md)
 def conv(md):
     o, intab, code = [], False, False
