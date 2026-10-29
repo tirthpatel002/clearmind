@@ -14,6 +14,15 @@ importers:
       '@clearmind/server':
         specifier: workspace:*
         version: link:server
+      '@hackkit/connector':
+        specifier: link:../hackkit/.worktrees/observability/packages/connector
+        version: link:../hackkit/.worktrees/observability/packages/connector
+      '@hackkit/observe':
+        specifier: link:../hackkit/.worktrees/observability/packages/observe
+        version: link:../hackkit/.worktrees/observability/packages/observe
+      agentmemory:
+        specifier: link:../agentmemory/.worktrees/supersession
+        version: link:../agentmemory/.worktrees/supersession
     devDependencies:
       '@types/node':
         specifier: ^26.6.5

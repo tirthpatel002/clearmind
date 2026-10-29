@@ -15,3 +15,4 @@ export type { ChatFn, ChatMessage, ChatOptions, ModelProvider } from "./provider
 export { hasNebiusKey, nebiusChat, nebiusEmbedder, nebiusProvider } from "./providers/nebius.js";
 export { fmtLog, fmtMemory } from "./format.js";
 export { main as runCli, parseArgs, USAGE } from "./cli.js";
+export { ANSWER_PROMPT } from "./prompts.js";

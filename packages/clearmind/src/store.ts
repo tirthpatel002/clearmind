@@ -24,6 +24,8 @@ import type {
 } from "./types.js";
 
 export interface ClearmindOptions {
+  /** Override the system prompt used by ask() (default ANSWER_PROMPT). */
+  answerPrompt?: string | undefined;
   dir: string;
   ownerId: string;
   embedder?: Embedder | undefined;
@@ -615,7 +617,7 @@ export class Clearmind {
       .map((m) => `[${m.id}] (confidence ${m.confidence}, ${m.createdAt.slice(0, 10)}) ${m.text}`)
       .join("\n");
     const res = await this.opts.chat([
-      { role: "system", content: ASK_SYSTEM },
+      { role: "system", content: this.opts.answerPrompt ?? ASK_SYSTEM },
       { role: "user", content: `MEMORIES:\n${ctx || "(no memories matched)"}\n\nQUESTION: ${question}` },
     ]);
     const { content, ...usage } = res;

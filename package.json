@@ -14,17 +14,21 @@
     "dev": "pnpm --filter @clearmind/app dev",
     "serve": "tsx server/src/cli.ts serve",
     "cli": "tsx server/src/cli.ts",
-    "typecheck": "pnpm -r typecheck && tsc -p scripts/tsconfig.json --noEmit",
+    "typecheck": "pnpm -r typecheck && tsc -p scripts/tsconfig.json --noEmit && tsc -p eval/tsconfig.json --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
     "demo": "tsx scripts/demo.ts",
     "seed": "tsx scripts/seed.ts",
     "scale": "tsx scripts/scale.ts",
-    "bench": "tsx scripts/bench.ts"
+    "bench": "tsx scripts/bench.ts",
+    "eval:lme": "tsx eval/longmemeval/run.ts"
   },
   "dependencies": {
     "@clearmind/core": "workspace:*",
-    "@clearmind/server": "workspace:*"
+    "@clearmind/server": "workspace:*",
+    "agentmemory": "link:../agentmemory/.worktrees/supersession",
+    "@hackkit/connector": "link:../hackkit/.worktrees/observability/packages/connector",
+    "@hackkit/observe": "link:../hackkit/.worktrees/observability/packages/observe"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
