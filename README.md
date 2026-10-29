@@ -79,15 +79,20 @@ CLI: `remember, update, recall, list, history, confirm, conflicts, patterns, les
 
 ## Benchmark
 
-> _Placeholder: numbers are being produced tonight on public long-term-memory datasets (e.g. LongMemEval / LoCoMo subsets) by an independent benchmark harness._
+Headline numbers come only from official, widely used datasets: **LongMemEval** (LongMemEval-S cleaned, MIT) and **MemoryAgentBench** (FactConsolidation). Offline replay, k=10, one fresh store per case; full table and method in the `bench` branch (`bench/RESULTS.md`).
 
-Early internal check (stale-fact category, 16 queries), before → after supersession:
+| dataset (category) | metric | agentmemory (before) | Clearmind | 
+|---|---|---|---|
+| LongMemEval-S (knowledge_update, 53) | newest version ranked first | 0.528 | **1.000** |
+| LongMemEval-S (knowledge_update, 53) | hit@1 | 0.472 | **0.849** |
+| MemoryAgentBench FactConsolidation (75) | newest version ranked first | 0.507 | **1.000** |
+| MemoryAgentBench FactConsolidation (75) | hit@1 | 0.507 | **0.987** |
 
-| Retriever | Newest version ranked first | An older version ranked above the newest |
-|---|---|---|
-| Hybrid (BM25 + Qwen3) | 0.44 → 0.63 | 0.44 → **0** |
-| Embedding only | 0.25 → 0.63 | 0.63 → **0** |
-| BM25 only | 0.25 → 0.38 | 0.38 → **0** |
+BM25 retriever; Qwen3-Embedding-8B results are in `bench/RESULTS.md`. Abstention (LongMemEval `_abs`): thresholds were tuned on a seeded 50-question LongMemEval-S dev subset only (3 `_abs`); those ids are excluded from headline scoring, and the held-out LongMemEval-S score is reported separately.
+
+Not headline numbers:
+- **LoCoMo** cases are included for reference only; LoCoMo is licensed **non-commercial** (CC BY-NC 4.0).
+- The 81 access-policy cases are **our own stress test (synthetic, not an official benchmark)**. On them Clearmind leaks 0% where a store without a policy layer leaks by construction.
 
 ## What was built during the hackathon
 

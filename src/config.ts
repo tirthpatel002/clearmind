@@ -6,7 +6,7 @@ import { join } from "node:path";
 export interface Config {
   host: string; port: number; dataDir: string; allowPublic: boolean;
   nebius: { baseUrl: string; chatModel: string; embedModel: string; apiKeyEnv: string; maxTokens: number; prices: Record<string, { in: number; out: number }> };
-  recall: { minSimilarity: number; minLexicalSimilarity: number };
+  recall: { minSimilarity: number; minLexicalSimilarity: number; abstain: { enabled: boolean; alpha: number; minEvidence: number; minEvidenceLexical: number } };
   confidence: { halfLifeDays: number; gain: number; floor: number; initial: number };
   duplicates: { threshold: number };
   conflicts: { minSimilarityEmbedding: number; minSimilarityLexical: number };
@@ -28,7 +28,7 @@ export const DEFAULTS: Config = {
       "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B": { in: 0.06, out: 0.24 }, "Qwen/Qwen3-Embedding-8B": { in: 0.01, out: 0 },
     },
   },
-  recall: { minSimilarity: 0.5, minLexicalSimilarity: 0.05 },
+  recall: { minSimilarity: 0.5, minLexicalSimilarity: 0.05, abstain: { enabled: true, alpha: 0.7, minEvidence: 0.35, minEvidenceLexical: 0.34 } },
   confidence: { halfLifeDays: 30, gain: 0.4, floor: 0.05, initial: 0.6 },
   duplicates: { threshold: 0.8 },
   conflicts: { minSimilarityEmbedding: 0.75, minSimilarityLexical: 0.3 },
@@ -49,7 +49,7 @@ export const ENV_MAP: Record<string, [string, (v: string) => unknown]> = {
   CLEARMIND_HOST: ["host", str], CLEARMIND_PORT: ["port", num], CLEARMIND_DATA_DIR: ["dataDir", str], CLEARMIND_ALLOW_PUBLIC: ["allowPublic", bool],
   CLEARMIND_BASE_URL: ["nebius.baseUrl", str], CLEARMIND_CHAT_MODEL: ["nebius.chatModel", str], CLEARMIND_EMBED_MODEL: ["nebius.embedModel", str],
   CLEARMIND_API_KEY_ENV: ["nebius.apiKeyEnv", str], CLEARMIND_MAX_TOKENS: ["nebius.maxTokens", num],
-  CLEARMIND_MIN_SIMILARITY: ["recall.minSimilarity", num], CLEARMIND_HALF_LIFE_DAYS: ["confidence.halfLifeDays", num],
+  CLEARMIND_MIN_SIMILARITY: ["recall.minSimilarity", num], CLEARMIND_ABSTAIN: ["recall.abstain.enabled", bool], CLEARMIND_ABSTAIN_MIN_EVIDENCE: ["recall.abstain.minEvidence", num], CLEARMIND_ABSTAIN_MIN_EVIDENCE_LEXICAL: ["recall.abstain.minEvidenceLexical", num], CLEARMIND_HALF_LIFE_DAYS: ["confidence.halfLifeDays", num],
   CLEARMIND_DUPLICATE_THRESHOLD: ["duplicates.threshold", num],
   CLEARMIND_PATTERN_MIN_SUPPORT: ["patterns.minSupport", num], CLEARMIND_PATTERN_MIN_DAYS: ["patterns.minDays", num],
   CLEARMIND_PATTERN_EMBED_LINK: ["patterns.embeddingLink", num],

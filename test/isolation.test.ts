@@ -71,3 +71,15 @@ describe("config loading", () => {
     expect(() => loadConfig({ env: {}, overrides: { host: "0.0.0.0" } })).toThrow();
   });
 });
+
+describe("abstention", () => {
+  it("returns nothing when evidence is weak, and the memory when it is strong", async () => {
+    const a = new Clearmind({ dir: dir(), ownerId: "alice" });
+    await a.remember("Alice's dentist appointment is on Nov 8 at 17:00", { tags: ["health"] });
+    const hit = await a.recallWithEvidence("when is the dentist appointment");
+    expect(hit.abstained).toBe(false); expect(hit.memories).toHaveLength(1);
+    const miss = await a.recallWithEvidence("what is the name of my cat");
+    expect(miss.abstained).toBe(true); expect(miss.memories).toHaveLength(0);
+    await a.close();
+  });
+});
