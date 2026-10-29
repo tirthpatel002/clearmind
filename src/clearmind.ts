@@ -1,5 +1,5 @@
 // Clearmind: a memory layer you can see, correct and trust. Built on agentmemory.
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AgentMemory, HybridRetriever, SqliteStore } from "agentmemory";
 import type { Embedder, EventInput, Lesson, LLM, Outcome, Scope } from "agentmemory";
@@ -205,7 +205,41 @@ export class Clearmind {
     return { ...r, answer: content, cited, usage };
   }
 
+  /** Human-readable pattern titles: Nemotron once per pattern (cached in <dir>/pattern-titles.json), heuristic fallback. */
+  async titledPatterns(o: { minSupport?: number; minDays?: number } = {}): Promise<(Pattern & { title: string })[]> {
+    const pats = await this.patterns(o);
+    const file = join(this.opts.dir, "pattern-titles.json");
+    const cache: Record<string, string> = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+    const facts = await this.list(true);
+    const text = (id: string) => facts.find((f) => f.id === id)?.text ?? "";
+    let dirty = false;
+    const out = [];
+    for (const p of pats) {
+      const key = [...p.terms].sort().join(" ");
+      let title = cache[key];
+      if (!title && this.opts.chat) {
+        try {
+          const r = await this.opts.chat([
+            { role: "system", content: "Write a short, natural title (max 9 words) for a habit seen in these personal notes. Plain text, no quotes, no trailing period. Example: Paneer tikka from Spice Hub, usually at dinner" },
+            { role: "user", content: p.evidence.map(text).join("\n") },
+          ], { maxTokens: 1500 });
+          title = r.content.trim().split("\n").pop()!.replace(/^["'*\s]+|["'.*\s]+$/g, "");
+          if (title && title.length <= 80) { cache[key] = title; dirty = true; } else title = "";
+        } catch { title = ""; }
+      }
+      out.push({ ...p, title: title || heuristicTitle(p.evidence.map(text), p.terms) });
+    }
+    if (dirty) writeFileSync(file, JSON.stringify(cache, null, 2));
+    return out;
+  }
+
   accessLog(agentId?: string): AccessLogEntry[] { return this.policy.accessLog(this.opts.ownerId, agentId ? { agentId } : undefined); }
 
   async close(): Promise<void> { this.policy.close(); await this.mem.close(); await this.lessonsMem.close(); }
+}
+
+function heuristicTitle(texts: string[], terms: string[]): string {
+  const best = [...texts].sort((a, b) => b.split(" ").filter((w) => terms.includes(w.toLowerCase())).length - a.split(" ").filter((w) => terms.includes(w.toLowerCase())).length || a.length - b.length)[0] ?? terms.join(" ");
+  const t = best.replace(/^[^:]{0,20}:\s*/, "").replace(/^(ordered|grabbed|went to|another)\s+(an?\s+)?/i, "");
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }

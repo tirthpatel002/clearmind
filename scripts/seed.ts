@@ -41,7 +41,7 @@ await cm.record("calendar-agent", run, { type: "error", error: "Invite sent for 
 const ls = await cm.endRun("calendar-agent", run, { status: "fail", failureType: "false_done", reason: "booked in wrong timezone" });
 
 clock = new Date();
-const pats = await cm.patterns(); // default rules: minSupport 3, minDays 2
+const pats = await cm.titledPatterns(); // default rules: minSupport 3, minDays 2
 console.log(`seeded ${(await cm.list()).length} memories, ${(await cm.conflicts()).length} conflicts, ${pats.length} patterns, ${ls.length} lessons; spend $${cm.ledger!.total().toFixed(5)}`);
-for (const p of pats) console.log(`  pattern: ${p.label} support=${p.support} days=${p.distinctDays} terms=${p.terms.join(",")}`);
+for (const p of pats) console.log(`  pattern: "${p.title}" ${p.label} support=${p.support} days=${p.distinctDays} terms=${p.terms.join(",")}`);
 await cm.close();

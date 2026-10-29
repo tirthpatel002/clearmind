@@ -24,7 +24,7 @@ export async function serve(o: { dir: string; ownerId: string; port: number; off
         return send(res, 200, {
           owner: o.ownerId, online: !!cm.ledger && !o.offline && !!process.env.NEBIUS_API_KEY,
           memories: await cm.list(true), grants: cm.policy.listGrants(o.ownerId), log: cm.accessLog().reverse(),
-          conflicts: await cm.conflicts(), patterns: await cm.patterns({ minDays: Number(url.searchParams.get("minDays") ?? 2) }),
+          conflicts: await cm.conflicts(), patterns: await cm.titledPatterns({ minDays: Number(url.searchParams.get("minDays") ?? 2) }),
           lessons: Object.fromEntries(Object.entries(lessons).map(([a, ls]) => [a, ls.map((l) => ({ id: l.lessonId, text: l.text, trigger: l.trigger, kind: l.kind, status: l.status, confidence: l.confidence }))])),
           spendUsd: cm.ledger?.total() ?? 0,
         });
