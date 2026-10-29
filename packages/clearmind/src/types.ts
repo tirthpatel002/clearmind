@@ -148,6 +148,12 @@ export interface AskResult extends ReadResult {
   cited: string[];
   abstained?: boolean;
   usage?: ChatUsage | undefined;
+  /** features.conflicts: conflicting memory pairs that were flagged to the model. */
+  conflicts?: { newer: string; older: string; reason: "same-key" | "supersedes" }[];
+  /** features.citations: evidence span per cited memory. */
+  evidence?: { id: string; text: string; support: number }[];
+  /** features.selfCheck: verifier verdict. */
+  verified?: boolean;
 }
 
 // ---------- graph (constellation) ----------

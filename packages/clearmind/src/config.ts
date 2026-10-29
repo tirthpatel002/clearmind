@@ -16,6 +16,8 @@ export interface Config {
   auth: { provider: "local"; defaultUser: string | null };
   ui: { pageSize: number; clusterAbove: number; maxNodes: number };
   import: { maxItems: number; maxBytes: number };
+  /** Opt-in recall/answer features (see features/config.ts); omitted = all off. */
+  features?: { [K in keyof import("./features/config.js").Features]?: Partial<import("./features/config.js").Features[K]> };
 }
 
 export const DEFAULTS: Config = {
