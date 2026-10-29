@@ -1,0 +1,4 @@
+/* Design tokens: colors, radius and type. */
+:root{--shell:#121212;--canvas:#F0F1EF;--card:#fff;--ink:#141414;--ink2:#3E4246;--mute:#8A8F98;--line:#E6E7E4;
+--mint:#C9F2C0;--mint2:#B8EFA8;--mintInk:#2F6B2A;--lilac:#E3D6FA;--lilac2:#C9B3F5;--lilacInk:#5B3E96;--sky:#DDEFFB;--skyInk:#245A7A;--butter:#F7E7A6;--butterInk:#7A5B0E;--black:#1A1A1A;--red:#E5533D;--dot:#7BC96F;
+--r:28px;--sans:"Manrope","Inter","SF Pro Display",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
