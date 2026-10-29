@@ -1,0 +1,7 @@
+# hackkit connector config for the Modal pilot. Keys come from the environment only (key_env names).
+project: clearmind-lme
+defaults: { timeout_ms: 600000, max_retries: 4 }
+providers:
+  nebius: { base_url: "https://api.tokenfactory.nebius.com/v1/", key_env: NEBIUS_API_KEY, timeout_ms: 120000 }
+  compat:
+    glimmer: { base_url: "https://tirth-patel--muse-glimmer-30b-serve.us-east.modal.run/v1", key_env: GLIMMER_API_KEY, timeout_ms: 600000 }

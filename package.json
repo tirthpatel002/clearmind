@@ -21,10 +21,13 @@
     "seed": "tsx scripts/seed.ts",
     "scale": "tsx scripts/scale.ts",
     "serve": "tsx src/cli.ts serve",
-    "bench": "tsx scripts/bench.ts"
+    "bench": "tsx scripts/bench.ts",
+    "eval:lme": "tsx eval/longmemeval/run.ts"
   },
   "dependencies": {
-    "agentmemory": "link:../agentmemory/.worktrees/supersession"
+    "agentmemory": "link:../agentmemory/.worktrees/supersession",
+    "@hackkit/connector": "link:../hackkit/.worktrees/observability/packages/connector",
+    "@hackkit/observe": "link:../hackkit/.worktrees/observability/packages/observe"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

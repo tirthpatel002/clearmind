@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@hackkit/connector':
+        specifier: link:../hackkit/.worktrees/observability/packages/connector
+        version: link:../hackkit/.worktrees/observability/packages/connector
+      '@hackkit/observe':
+        specifier: link:../hackkit/.worktrees/observability/packages/observe
+        version: link:../hackkit/.worktrees/observability/packages/observe
       agentmemory:
         specifier: link:../agentmemory/.worktrees/supersession
         version: link:../agentmemory/.worktrees/supersession
