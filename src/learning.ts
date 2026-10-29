@@ -106,7 +106,7 @@ export function detectPatterns(facts: Fact[], o: { minSupport?: number; minDays?
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i]!)));
   for (let i = 0; i < facts.length; i++) for (let j = i + 1; j < facts.length; j++) {
     let s = 0; for (const t of toks[i]!) if (toks[j]!.has(t)) s++;
-    const embOk = facts[i]!.embedding && facts[j]!.embedding ? similarity(facts[i]!, facts[j]!) >= 0.7 : false;
+    const embOk = facts[i]!.embedding && facts[j]!.embedding ? s >= 1 && similarity(facts[i]!, facts[j]!) >= 0.8 : false; // embeddings only link facts that also share a topic term
     if (s >= minShared || embOk) parent[find(i)] = find(j);
   }
   const groups = new Map<number, number[]>();

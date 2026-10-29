@@ -70,13 +70,13 @@ export class Clearmind {
   }
 
   /** Build with Nemotron chat + Qwen3 embeddings when NEBIUS_API_KEY is in the environment. */
-  static fromEnv(dir: string, ownerId: string, o: { offline?: boolean } = {}): Clearmind {
+  static fromEnv(dir: string, ownerId: string, o: { offline?: boolean; now?: () => Date } = {}): Clearmind {
     const online = !o.offline && hasNebiusKey();
     const ledger = new SpendLedger(join(dir, "spend.jsonl"));
     mkdirSync(dir, { recursive: true });
     const chat = online ? nebiusChat(ledger) : null;
     const cm = new Clearmind({ dir, ownerId, embedder: online ? nebiusEmbedder(ledger) : undefined,
-      chat: chat ? (m, op) => chat.call(m, op) : undefined, llm: chat?.llm });
+      chat: chat ? (m, op) => chat.call(m, op) : undefined, llm: chat?.llm, now: o.now });
     (cm as any).ledger = ledger;
     return cm;
   }
