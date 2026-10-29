@@ -21,8 +21,8 @@ importers:
         specifier: link:../hackkit/.worktrees/observability/packages/observe
         version: link:../hackkit/.worktrees/observability/packages/observe
       agentmemory:
-        specifier: link:../agentmemory/.worktrees/supersession
-        version: link:../agentmemory/.worktrees/supersession
+        specifier: link:../agentmemory
+        version: link:../agentmemory
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -55,8 +55,8 @@ importers:
   packages/clearmind:
     dependencies:
       agentmemory:
-        specifier: link:../../../agentmemory/.worktrees/supersession
-        version: link:../../../agentmemory/.worktrees/supersession
+        specifier: link:../../../agentmemory
+        version: link:../../../agentmemory
     devDependencies:
       '@types/node':
         specifier: ^26.6.5

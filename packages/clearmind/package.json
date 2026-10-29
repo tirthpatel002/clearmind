@@ -18,7 +18,7 @@
     "cli": "tsx src/cli-main.ts"
   },
   "dependencies": {
-    "agentmemory": "link:../../../agentmemory/.worktrees/supersession"
+    "agentmemory": "link:../../../agentmemory"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
