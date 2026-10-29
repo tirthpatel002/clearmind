@@ -2,8 +2,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Clearmind } from "../src/clearmind.js";
-import { fmtLog, fmtMemory } from "../src/cli.js";
+import { Clearmind, fmtLog, fmtMemory } from "@clearmind/core";
 
 const dir = process.argv[2] ?? mkdtempSync(join(tmpdir(), "clearmind-cp2-"));
 const cm = Clearmind.fromEnv(dir, "tirth");

@@ -1,35 +1,8 @@
 // Access policy for Clearmind: scoped grants, required purpose, expiry, consent, access log, revoke.
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import type { AccessLogEntry, AccessLogPage, AccessStats, Decision, Grant } from "./types.js";
 
-export interface Grant {
-  grantId: string;
-  ownerId: string;
-  agentId: string; // who may read
-  tags: string[]; // memory scopes the agent may see, e.g. ["work"]; "*" = all
-  purposes: string[]; // allowed purposes; "*" = any non-empty purpose
-  consentBy: string; // who consented (required)
-  consentAt: string;
-  expiresAt: string | null;
-  revokedAt: string | null;
-  revokedBy: string | null;
-}
-
-export type Decision = "allowed" | "denied";
-
-export interface AccessLogEntry {
-  seq: number;
-  at: string;
-  ownerId: string;
-  agentId: string;
-  action: "read" | "grant" | "revoke";
-  purpose: string | null;
-  tags: string[];
-  decision: Decision;
-  reason: string;
-  grantId: string | null;
-  memoryIds: string[];
-}
 
 export interface AccessRequest {
   agentId: string;
@@ -143,7 +116,7 @@ export class AccessPolicy {
   }
 
   /** Newest first, keyset-paginated by seq. q matches agent, purpose, reason or scope. */
-  logPage(ownerId: string, o: { limit?: number; cursor?: number | null; q?: string; scope?: string; agentId?: string; decision?: string; action?: string } = {}): { items: AccessLogEntry[]; nextCursor: number | null } {
+  logPage(ownerId: string, o: { limit?: number; cursor?: number | null; q?: string; scope?: string; agentId?: string; decision?: string; action?: string } = {}): AccessLogPage {
     const limit = Math.min(200, Math.max(1, o.limit ?? 50));
     let sql = `SELECT * FROM access_log WHERE owner_id=?`; const p: (string | number)[] = [ownerId];
     if (o.cursor) { sql += ` AND seq < ?`; p.push(o.cursor); }
@@ -159,7 +132,7 @@ export class AccessPolicy {
   }
 
   /** Aggregates for the dashboard, computed in SQL. Day buckets use the client's UTC offset (minutes). */
-  logStats(ownerId: string, o: { days?: number; tzOffsetMin?: number; now?: Date } = {}) {
+  logStats(ownerId: string, o: { days?: number; tzOffsetMin?: number; now?: Date } = {}): AccessStats {
     const days = Math.min(90, o.days ?? 14), off = Math.round(o.tzOffsetMin ?? 0), now = o.now ?? this.now();
     const since = new Date(now.getTime() - (days + 1) * 864e5).toISOString();
     const totals = this.db.prepare(`SELECT decision, COUNT(*) n FROM access_log WHERE owner_id=? AND action='read' AND agent_id<>'owner' GROUP BY decision`).all(ownerId) as any[];

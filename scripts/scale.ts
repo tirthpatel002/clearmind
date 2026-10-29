@@ -4,7 +4,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { Clearmind } from "../src/clearmind.js";
+import { Clearmind } from "@clearmind/core";
 
 const arg = (k: string, d?: string) => { const i = process.argv.indexOf("--" + k); return i > 0 ? process.argv[i + 1] : d; };
 const dir = arg("dir"), user = arg("user"); const N = Number(arg("memories", "10000")), M = Number(arg("log", "50000"));
@@ -22,7 +22,8 @@ let r = 7; const rnd = () => ((r = (r * 1103515245 + 12345) % 2 ** 31) / 2 ** 31
 const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
 const t0 = Date.now() - 180 * 864e5;
 const mdb = new DatabaseSync(join(dir, "memory.db"));
-const ins = mdb.prepare(`INSERT INTO lessons (lesson_id,namespace,user_id,agent_id,text,trigger,kind,provenance,confidence,uses,helped,hurt,created_at,updated_at,status,replaced_by,embedding,embedding_model,extra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+type Run = { run: (...values: unknown[]) => unknown };
+const ins = <Run>(<unknown>mdb.prepare(`INSERT INTO lessons (lesson_id,namespace,user_id,agent_id,text,trigger,kind,provenance,confidence,uses,helped,hurt,created_at,updated_at,status,replaced_by,embedding,embedding_model,extra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`));
 const ids: string[] = [];
 mdb.exec("BEGIN");
 for (let i = 0; i < N; i++) {
@@ -32,7 +33,7 @@ for (let i = 0; i < N; i++) {
 }
 mdb.exec("COMMIT"); mdb.close();
 const pdb = new DatabaseSync(join(dir, "policy.db"));
-const lg = pdb.prepare(`INSERT INTO access_log (at,owner_id,agent_id,action,purpose,tags,decision,reason,grant_id,memory_ids) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+const lg = <Run>(<unknown>pdb.prepare(`INSERT INTO access_log (at,owner_id,agent_id,action,purpose,tags,decision,reason,grant_id,memory_ids) VALUES (?,?,?,?,?,?,?,?,?,?)`));
 const agents = ["calendar-agent", "shopping-agent", "travel-agent", "fitness-agent", "unknown-bot"];
 pdb.exec("BEGIN");
 for (let i = 0; i < M; i++) {

@@ -4,8 +4,7 @@
 //        (pnpm seed --demo --dir ... --user ...). Wipes <dataDir> first.
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Clearmind } from "../src/clearmind.js";
-import { loadConfig, validUserId } from "../src/config.js";
+import { Clearmind, loadConfig, validUserId } from "@clearmind/core";
 
 const arg = (k: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : undefined; };
 if (!process.argv.includes("--demo")) { console.error("refusing to seed: pass --demo explicitly (demo data is never added automatically)"); process.exit(2); }

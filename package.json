@@ -1,33 +1,34 @@
 {
-  "name": "clearmind",
+  "name": "clearmind-workspace",
   "version": "0.1.0",
   "description": "A memory layer you can see, correct and trust, for people and AI agents.",
+  "private": true,
   "type": "module",
   "license": "MIT",
+  "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=22.5"
   },
-  "bin": {
-    "clearmind": "./dist/cli.js"
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "pnpm --filter @clearmind/app build",
+    "dev": "pnpm --filter @clearmind/app dev",
+    "serve": "tsx server/src/cli.ts serve",
+    "cli": "tsx server/src/cli.ts",
+    "typecheck": "pnpm -r typecheck && tsc -p scripts/tsconfig.json --noEmit",
     "test": "vitest run",
+    "format": "prettier --write .",
     "demo": "tsx scripts/demo.ts",
-    "cli": "tsx src/cli.ts",
     "seed": "tsx scripts/seed.ts",
     "scale": "tsx scripts/scale.ts",
-    "serve": "tsx src/cli.ts serve",
     "bench": "tsx scripts/bench.ts"
   },
   "dependencies": {
-    "agentmemory": "link:../agentmemory/.worktrees/supersession"
+    "@clearmind/core": "workspace:*",
+    "@clearmind/server": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"

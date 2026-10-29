@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Clearmind, loadConfig } from "../src/index.js";
-import { parseImport } from "../src/clearmind.js";
+import { parseImport } from "../src/index.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cm-iso-"));
 

@@ -1,4 +1,6 @@
-// Block 3: learning memory. Pure functions so they are easy to test.
+// Learning memory: confidence, duplicates, conflicts and patterns. Pure functions so they are easy to test.
+import type { Conflict, Pattern } from "./types.js";
+
 
 export interface Fact {
   id: string;
@@ -66,7 +68,6 @@ function sameNumbers(a: string, b: string): boolean {
 }
 
 // ---------- conflicts ----------
-export interface Conflict { a: string; b: string; reason: string; similarity: number }
 
 /**
  * Two ACTIVE facts about the same thing that disagree: similar wording/topic but different numbers,
@@ -114,7 +115,6 @@ export function detectConflicts(facts: Fact[], o: { minSimilarity?: number; minS
 }
 
 // ---------- patterns ----------
-export interface Pattern { label: string; terms: string[]; evidence: string[]; support: number; distinctDays: number; confidence: number }
 
 /**
  * Patterns from repeated facts: groups of >= minSupport facts (any status: replaced versions are evidence too)

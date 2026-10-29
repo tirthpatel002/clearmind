@@ -4,8 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync, exist
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Clearmind } from "../src/clearmind.js";
-import { loadConfig } from "../src/config.js";
+import { Clearmind, loadConfig } from "@clearmind/core";
 
 const arg = (k: string, d?: string) => { const i = process.argv.indexOf("--" + k); return i > 0 ? process.argv[i + 1] : d; };
 const data = arg("data")!, out = arg("out")!, limit = Number(arg("limit", "100000"));

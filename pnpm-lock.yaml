@@ -8,9 +8,65 @@ importers:
 
   .:
     dependencies:
+      '@clearmind/core':
+        specifier: workspace:*
+        version: link:packages/clearmind
+      '@clearmind/server':
+        specifier: workspace:*
+        version: link:server
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.6
+      prettier:
+        specifier: ^3.9.10
+        version: 3.9.10
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.6)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15))
+
+  app:
+    devDependencies:
+      '@clearmind/core':
+        specifier: workspace:*
+        version: link:../packages/clearmind
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15)
+
+  packages/clearmind:
+    dependencies:
       agentmemory:
-        specifier: link:../agentmemory/.worktrees/supersession
-        version: link:../agentmemory/.worktrees/supersession
+        specifier: link:../../../agentmemory/.worktrees/supersession
+        version: link:../../../agentmemory/.worktrees/supersession
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.6
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.6)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15))
+
+  server:
+    dependencies:
+      '@clearmind/core':
+        specifier: workspace:*
+        version: link:../packages/clearmind
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -569,6 +625,11 @@ packages:
     resolution: {integrity: sha512-LJlKCCAUFKOuZxipUdYw1NzIITEsPcgyOG9LkvRJvuKj/bRzbuRY0ARXvL0pWGpsZvn8jku+LMep2eU0seHp8g==, tarball: https://registry.npmjs.org/postcss/-/postcss-8.5.32.tgz}
     engines: {node: ^10 || ^12 || >=14}
 
+  prettier@3.9.10:
+    resolution: {integrity: sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==, tarball: https://registry.npmjs.org/prettier/-/prettier-3.9.10.tgz}
+    engines: {node: '>=14'}
+    hasBin: true
+
   rolldown@1.2.15:
     resolution: {integrity: sha512-6odND+fel5zVw3I4Yc2e69gvguDnX0CAAGiNDZSq4ik5WUcaLrkD2GLuog0XcODbor31hZ5ayEMgVDno+KPV5g==, tarball: https://registry.npmjs.org/rolldown/-/rolldown-1.2.15.tgz}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -1033,6 +1094,8 @@ snapshots:
       nanoid: 3.3.20
       picocolors: 1.1.1
       source-map-js: 1.2.2
+
+  prettier@3.9.10: {}
 
   rolldown@1.2.15:
     dependencies:
