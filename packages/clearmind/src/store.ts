@@ -12,6 +12,14 @@ import { parseImport } from "./importer.js";
 import { confirmConfidence, detectConflicts, detectPatterns, effectiveConfidence, findDuplicate } from "./learning.js";
 import type { Fact } from "./learning.js";
 import { AccessPolicy } from "./policy.js";
+import { features as resolveFeatures, type Features } from "./features/config.js";
+import { decomposeQuery, interleave } from "./features/decompose.js";
+import { adaptiveAbstain } from "./features/adaptiveAbstain.js";
+import { detectInjection } from "./features/injection.js";
+import { spotlight } from "./features/provenance.js";
+import { conflictNote, findConflicts } from "./features/conflicts.js";
+import { citationEvidence, selfCheck } from "./features/verify.js";
+import { applyTimeAwareRecall } from "./time/index.js";
 import { ASK_SYSTEM, extractSystem, TITLE_SYSTEM } from "./prompts.js";
 import { hasNebiusKey, nebiusProvider } from "./providers/nebius.js";
 import type { ChatFn } from "./providers/provider.js";
@@ -266,12 +274,17 @@ export class Clearmind {
    * coverage, lexical only when there are no vectors. Below the threshold no memories are returned.
    */
   async recallWithEvidence(query: string, k = 5, tags?: string[]): Promise<RecallEvidence> {
-    const got = await this.recall(query, k, tags);
+    const f = this.features;
+    const got = await this.recallFeatured(query, k, tags, f);
     if (!got.length) return { memories: [], evidence: 0, cosine: null, lexical: 0, abstained: true, candidates: [] };
     const top = got[0]!;
     const lexical = lexicalCoverage(query, top.text);
     const cosine = await this.queryCosine(query, top.id);
-    const { evidence, abstained } = answerability(cosine, lexical, this.cfg.recall.abstain);
+    let { evidence, abstained } = answerability(cosine, lexical, this.cfg.recall.abstain);
+    if (f.adaptiveAbstain.enabled && this.cfg.recall.abstain.enabled) {
+      const a = this.cfg.recall.abstain;
+      abstained = adaptiveAbstain(query, got, evidence, cosine === null ? a.minEvidenceLexical : a.minEvidence, f.adaptiveAbstain).abstained;
+    }
     return {
       memories: abstained ? [] : got,
       evidence: Number(evidence.toFixed(4)),
@@ -280,6 +293,21 @@ export class Clearmind {
       abstained,
       candidates: got,
     };
+  }
+
+  /** Resolved opt-in features (config.features; all off by default). */
+  get features(): Features { return resolveFeatures((this.cfg as any).features); }
+
+  /** recall() plus the opt-in time-aware (6), decomposition (7) and injection-drop (17) stages. */
+  private async recallFeatured(query: string, k: number, tags: string[] | undefined, f: Features): Promise<Memory[]> {
+    const pool = f.time.mode !== "off" ? Math.max(k, f.time.pool) : k;
+    const parts = f.decompose.enabled ? decomposeQuery(query, f.decompose.maxParts) : [query];
+    let got = parts.length > 1
+      ? interleave(await Promise.all([query, ...parts].map((q) => this.recall(q, pool, tags))), pool)
+      : await this.recall(query, pool, tags);
+    if (f.injection.mode === "drop") got = got.filter((m) => !detectInjection(m.text).length);
+    if (f.time.mode !== "off") got = applyTimeAwareRecall(got, query, f.time, { referenceDate: this.opts.now?.() ?? new Date(), k: pool });
+    return got.slice(0, k);
   }
 
   /** Cosine between the query and a stored memory's vector; null without an embedder or vector. */
@@ -613,18 +641,38 @@ export class Clearmind {
     }
     if (r.decision === "denied") return { ...r, answer: `Access denied: ${r.reason}`, cited: [] };
     if (!r.memories.length) return { ...r, answer: NO_MEMORY, cited: [], abstained: true };
-    const ctx = r.memories
-      .map((m) => `[${m.id}] (confidence ${m.confidence}, ${m.createdAt.slice(0, 10)}) ${m.text}`)
-      .join("\n");
+    const f = this.features;
+    if (f.injection.mode === "drop") r = { ...r, memories: r.memories.filter((m) => !detectInjection(m.text).length) };
+    if (!r.memories.length) return { ...r, answer: NO_MEMORY, cited: [], abstained: true };
+    const flags = new Map(f.injection.mode === "flag" ? r.memories.map((m) => [m.id, detectInjection(m.text)] as const) : []);
+    const conflicts = f.conflicts.enabled ? findConflicts(r.memories) : [];
+    let system = this.opts.answerPrompt ?? ASK_SYSTEM, ctx: string;
+    if (f.provenance.enabled || f.injection.mode === "flag") {
+      const sp = spotlight(r.memories, f, flags);
+      ctx = sp.context; system = `${system}\n\n${sp.preamble}`;
+    } else {
+      ctx = r.memories
+        .map((m) => `[${m.id}] (confidence ${m.confidence}, ${m.createdAt.slice(0, 10)}) ${m.text}`)
+        .join("\n");
+    }
     const res = await this.opts.chat([
-      { role: "system", content: this.opts.answerPrompt ?? ASK_SYSTEM },
-      { role: "user", content: `MEMORIES:\n${ctx || "(no memories matched)"}\n\nQUESTION: ${question}` },
+      { role: "system", content: system },
+      { role: "user", content: `${conflictNote(conflicts)}MEMORIES:\n${ctx || "(no memories matched)"}\n\nQUESTION: ${question}` },
     ]);
     const { content, ...usage } = res;
     if (isNoMemoryReply(content)) return { ...r, answer: NO_MEMORY, cited: [], abstained: true, usage };
     const ids = [...content.matchAll(/\[([0-9A-Z]{10,})\]/g)].map((m) => m[1]!);
     const cited = [...new Set(ids)].filter((id) => r.memories.some((m) => m.id === id));
-    return { ...r, answer: content, cited, usage };
+    const extra: Partial<AskResult> = {};
+    if (conflicts.length) extra.conflicts = conflicts;
+    if (f.citations.evidence || f.citations.required) extra.evidence = citationEvidence(content, cited, r.memories);
+    if (f.citations.required && !cited.length) return { ...r, ...extra, answer: NO_MEMORY, cited: [], abstained: true, usage };
+    if (f.selfCheck.enabled) {
+      const v = await selfCheck(this.opts.chat, question, content, r.memories);
+      extra.verified = v.supported;
+      if (!v.supported && f.selfCheck.onUnsupported === "abstain") return { ...r, ...extra, answer: NO_MEMORY, cited: [], abstained: true, usage };
+    }
+    return { ...r, ...extra, answer: content, cited, usage };
   }
 
   // ----- pattern titles -----
