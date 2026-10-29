@@ -72,14 +72,36 @@ export interface Conflict { a: string; b: string; reason: string; similarity: nu
  * Two ACTIVE facts about the same thing that disagree: similar wording/topic but different numbers,
  * or one negates the other. (Same-key facts never conflict: supersession already resolved them.)
  */
-export function detectConflicts(facts: Fact[], o: { minSimilarity?: number } = {}): Conflict[] {
+/**
+ * Candidate pairs. Small sets: all pairs. Large sets: pairs that share a rare-enough topic term (inverted index),
+ * so cost grows with real overlap instead of n^2. Pairs with no shared term are skipped above `allPairsBelow`.
+ */
+export function candidatePairs(toks: Set<string>[], o: { allPairsBelow?: number; maxDf?: number } = {}): [number, number][] {
+  const n = toks.length, out: [number, number][] = [];
+  if (n <= (o.allPairsBelow ?? 600)) { for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) out.push([i, j]); return out; }
+  const inv = new Map<string, number[]>();
+  toks.forEach((ts, i) => { for (const t of ts) { let a = inv.get(t); if (!a) inv.set(t, (a = [])); a.push(i); } });
+  const maxDf = o.maxDf ?? Math.max(50, Math.ceil(Math.sqrt(n) * 2));
+  const seen = new Set<number>();
+  for (const ids of inv.values()) {
+    if (ids.length < 2 || ids.length > maxDf) continue;
+    for (let x = 0; x < ids.length; x++) for (let y = x + 1; y < ids.length; y++) {
+      const i = ids[x]!, j = ids[y]!, k = i * n + j;
+      if (!seen.has(k)) { seen.add(k); out.push([i, j]); }
+    }
+  }
+  return out;
+}
+
+export function detectConflicts(facts: Fact[], o: { minSimilarity?: number; minSimilarityEmbedding?: number; minSimilarityLexical?: number } = {}): Conflict[] {
   const act = facts.filter((f) => !f.status || f.status === "active");
   const out: Conflict[] = [];
-  for (let i = 0; i < act.length; i++) for (let j = i + 1; j < act.length; j++) {
+  const toks = act.map((f) => new Set(tokens(f.text).filter((t) => !/^\d/.test(t))));
+  for (const [i, j] of candidatePairs(toks)) {
     const a = act[i]!, b = act[j]!;
     if (a.key && b.key && a.key !== b.key) continue;
     const sim = similarity(a, b);
-    const minSim = o.minSimilarity ?? (a.embedding && b.embedding ? 0.75 : 0.3);
+    const minSim = o.minSimilarity ?? (a.embedding && b.embedding ? o.minSimilarityEmbedding ?? 0.75 : o.minSimilarityLexical ?? 0.3);
     if (sim < minSim) continue;
     const na = a.text.match(NUM) ?? [], nb = b.text.match(NUM) ?? [];
     const negA = NEG.test(a.text), negB = NEG.test(b.text);
@@ -98,15 +120,15 @@ export interface Pattern { label: string; terms: string[]; evidence: string[]; s
  * Patterns from repeated facts: groups of >= minSupport facts (any status: replaced versions are evidence too)
  * that share topic terms, seen on >= minDays distinct days. Confidence grows with support and spread.
  */
-export function detectPatterns(facts: Fact[], o: { minSupport?: number; minDays?: number; minShared?: number } = {}): Pattern[] {
-  const minSupport = o.minSupport ?? 3, minDays = o.minDays ?? 2, minShared = o.minShared ?? 2;
+export function detectPatterns(facts: Fact[], o: { minSupport?: number; minDays?: number; minShared?: number; embeddingLink?: number } = {}): Pattern[] {
+  const minSupport = o.minSupport ?? 3, minDays = o.minDays ?? 2, minShared = o.minShared ?? 2, link = o.embeddingLink ?? 0.8;
   const toks = facts.map((f) => new Set(tokens(f.text).filter((t) => !/^\d/.test(t))));
   // single-link clustering on shared-term count
   const parent = facts.map((_, i) => i);
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i]!)));
-  for (let i = 0; i < facts.length; i++) for (let j = i + 1; j < facts.length; j++) {
+  for (const [i, j] of candidatePairs(toks)) {
     let s = 0; for (const t of toks[i]!) if (toks[j]!.has(t)) s++;
-    const embOk = facts[i]!.embedding && facts[j]!.embedding ? s >= 1 && similarity(facts[i]!, facts[j]!) >= 0.8 : false; // embeddings only link facts that also share a topic term
+    const embOk = facts[i]!.embedding && facts[j]!.embedding ? s >= 1 && similarity(facts[i]!, facts[j]!) >= link : false; // embeddings only link facts that also share a topic term
     if (s >= minShared || embOk) parent[find(i)] = find(j);
   }
   const groups = new Map<number, number[]>();

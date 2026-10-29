@@ -19,7 +19,9 @@
     "demo": "tsx scripts/demo.ts",
     "cli": "tsx src/cli.ts",
     "seed": "tsx scripts/seed.ts",
-    "serve": "tsx src/cli.ts serve"
+    "scale": "tsx scripts/scale.ts",
+    "serve": "tsx src/cli.ts serve",
+    "bench": "tsx scripts/bench.ts"
   },
   "dependencies": {
     "agentmemory": "link:../agentmemory/.worktrees/supersession"

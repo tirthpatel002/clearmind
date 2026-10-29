@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// clearmind CLI. Data dir: --dir (default ./.data), owner: --owner (default "me").
+// clearmind CLI. Data dir: --dir (default from config), user: --user (required for data commands).
 import { Clearmind } from "./clearmind.js";
+import { loadConfig } from "./config.js";
 import type { Memory } from "./clearmind.js";
 import type { AccessLogEntry } from "./policy.js";
 
@@ -23,7 +24,7 @@ function parse(argv: string[]) {
 }
 const list = (s?: string) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : undefined);
 
-const USAGE = `clearmind <command> [--dir ./.data] [--owner me]
+const USAGE = `clearmind <command> [--dir ./.data] --user <id>   (config: CLEARMIND_* env or <dir>/clearmind.config.json)
   remember <text> [--tags a,b] [--key k]     store a memory (same --key replaces the old one)
   update <id> <text>                          new version; old one is marked replaced
   recall <query> [--k 5]                      newest version wins
@@ -37,15 +38,22 @@ const USAGE = `clearmind <command> [--dir ./.data] [--owner me]
   conflicts | patterns                        learning memory
   lessons --agent A                           distilled agent lessons
   ask <question> [--agent A --purpose P --tags a]   answer from memory via Nemotron (policy enforced)
-  serve [--port 8787]                         local web app
+  serve [--port 8790] [--user id]             local web app (127.0.0.1 only unless allowPublic)
   global: --offline (no Nebius calls)`;
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const { pos, f } = parse(argv);
   const [cmd, ...rest] = pos;
   if (!cmd || cmd === "help") { console.log(USAGE); return 0; }
-  if (cmd === "serve") { const { serve } = await import("./server.js"); await serve({ dir: f.dir ?? ".data", ownerId: f.owner ?? "me", port: Number(f.port ?? 8787), offline: f.offline === "true" }); return 0; }
-  const cm = Clearmind.fromEnv(f.dir ?? ".data", f.owner ?? "me", { offline: f.offline === "true" });
+  if (cmd === "serve") {
+    const { serve } = await import("./server.js");
+    await serve({ offline: f.offline === "true", overrides: { dataDir: f.dir, port: f.port ? Number(f.port) : undefined, host: f.host, "auth.defaultUser": f.user ?? f.owner } });
+    return 0;
+  }
+  const cfg = loadConfig({ overrides: { dataDir: f.dir } });
+  const owner = f.user ?? f.owner ?? process.env.CLEARMIND_USER ?? cfg.auth.defaultUser;
+  if (!owner) { console.error("error: pass --user <id> (or set CLEARMIND_USER)"); return 2; }
+  const cm = Clearmind.fromEnv(cfg.dataDir, owner, { offline: f.offline === "true", config: cfg });
   try {
     switch (cmd) {
       case "remember": console.log(fmtMemory(await cm.remember(rest.join(" "), { tags: list(f.tags), key: f.key }))); break;
@@ -63,8 +71,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         console.log(`${r.decision.toUpperCase()}: ${r.reason}`); for (const m of r.memories) console.log("  " + fmtMemory(m));
         return r.decision === "allowed" ? 0 : 3;
       }
-      case "revoke": console.log(JSON.stringify(cm.revoke(rest[0]!, f.by ?? f.owner ?? "me"))); break;
-      case "grants": for (const g of cm.policy.listGrants(f.owner ?? "me")) console.log(JSON.stringify(g)); break;
+      case "revoke": console.log(JSON.stringify(cm.revoke(rest[0]!, f.by ?? owner))); break;
+      case "grants": for (const g of cm.policy.listGrants(owner)) console.log(JSON.stringify(g)); break;
       case "log": for (const e of cm.accessLog(f.agent)) console.log(fmtLog(e)); break;
       case "confirm": console.log(fmtMemory(await cm.confirm(rest[0]!))); break;
       case "conflicts": for (const c of await cm.conflicts()) console.log(`CONFLICT ${c.a} <> ${c.b}: ${c.reason} (sim ${c.similarity})`); break;
