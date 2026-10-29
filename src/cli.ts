@@ -6,7 +6,7 @@ import type { AccessLogEntry } from "./policy.js";
 
 export function fmtMemory(m: Memory): string {
   const st = m.status === "active" ? "" : ` [${m.status}${m.replacedBy ? ` -> ${m.replacedBy}` : ""}]`;
-  return `${m.id}${st}  ${m.text}${m.tags.length ? `  #${m.tags.join(" #")}` : ""}`;
+  return `${m.id}${st}  ${m.text}${m.tags.length ? `  #${m.tags.join(" #")}` : ""}  (conf ${m.confidence}${m.confirmations ? `, confirmed x${m.confirmations}` : ""})`;
 }
 export function fmtLog(e: AccessLogEntry): string {
   return `#${e.seq} ${e.at} ${e.action.padEnd(6)} agent=${e.agentId} ${e.decision.toUpperCase()} purpose=${e.purpose ?? "-"} scope=[${e.tags.join(",")}] ${e.reason}${e.memoryIds.length ? ` memories=${e.memoryIds.join(",")}` : ""}`;
@@ -32,13 +32,20 @@ const USAGE = `clearmind <command> [--dir ./.data] [--owner me]
   grant --agent A --tags a,b --purposes p,q --consent-by me [--ttl-min 60]
   read --agent A --query Q [--purpose P] [--tags a]
   revoke <grantId> [--by me]
-  grants | log [--agent A]`;
+  grants | log [--agent A]
+  confirm <id>                                still true: confidence rises, decay restarts
+  conflicts | patterns                        learning memory
+  lessons --agent A                           distilled agent lessons
+  ask <question> [--agent A --purpose P --tags a]   answer from memory via Nemotron (policy enforced)
+  serve [--port 8787]                         local web app
+  global: --offline (no Nebius calls)`;
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const { pos, f } = parse(argv);
   const [cmd, ...rest] = pos;
   if (!cmd || cmd === "help") { console.log(USAGE); return 0; }
-  const cm = new Clearmind({ dir: f.dir ?? ".data", ownerId: f.owner ?? "me" });
+  if (cmd === "serve") { const { serve } = await import("./server.js"); await serve({ dir: f.dir ?? ".data", ownerId: f.owner ?? "me", port: Number(f.port ?? 8787), offline: f.offline === "true" }); return 0; }
+  const cm = Clearmind.fromEnv(f.dir ?? ".data", f.owner ?? "me", { offline: f.offline === "true" });
   try {
     switch (cmd) {
       case "remember": console.log(fmtMemory(await cm.remember(rest.join(" "), { tags: list(f.tags), key: f.key }))); break;
@@ -59,6 +66,17 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       case "revoke": console.log(JSON.stringify(cm.revoke(rest[0]!, f.by ?? f.owner ?? "me"))); break;
       case "grants": for (const g of cm.policy.listGrants(f.owner ?? "me")) console.log(JSON.stringify(g)); break;
       case "log": for (const e of cm.accessLog(f.agent)) console.log(fmtLog(e)); break;
+      case "confirm": console.log(fmtMemory(await cm.confirm(rest[0]!))); break;
+      case "conflicts": for (const c of await cm.conflicts()) console.log(`CONFLICT ${c.a} <> ${c.b}: ${c.reason} (sim ${c.similarity})`); break;
+      case "patterns": for (const p of await cm.patterns()) console.log(`${p.label}  support=${p.support} days=${p.distinctDays} confidence=${p.confidence} evidence=${p.evidence.join(",")}`); break;
+      case "lessons": for (const l of await cm.lessons(f.agent ?? "agent")) console.log(`${l.lessonId} [${l.status} ${l.kind} conf ${l.confidence}] ${l.text}  (when: ${l.trigger})`); break;
+      case "ask": {
+        const r = await cm.ask(rest.join(" "), { agentId: f.agent, purpose: f.purpose, tags: list(f.tags) });
+        console.log(r.answer);
+        if (r.cited.length) console.log(`cited: ${r.cited.join(", ")}`);
+        if (r.usage) console.log(`(${r.usage.model}, ${r.usage.promptTokens}+${r.usage.completionTokens} tok, $${r.usage.usd.toFixed(5)}, ${r.usage.ms} ms)`);
+        return r.decision === "allowed" ? 0 : 3;
+      }
       default: console.error(USAGE); return 2;
     }
     return 0;

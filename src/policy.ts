@@ -58,7 +58,8 @@ export class AccessPolicy {
       CREATE TABLE IF NOT EXISTS access_log (
         seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, owner_id TEXT NOT NULL, agent_id TEXT NOT NULL,
         action TEXT NOT NULL, purpose TEXT, tags TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT NOT NULL,
-        grant_id TEXT, memory_ids TEXT NOT NULL);`);
+        grant_id TEXT, memory_ids TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS agents (owner_id TEXT NOT NULL, agent_id TEXT NOT NULL, PRIMARY KEY (owner_id, agent_id));`);
   }
 
   grant(ownerId: string, g: { agentId: string; tags: string[]; purposes: string[]; consentBy: string; ttlMs?: number | null }): Grant {
@@ -131,6 +132,12 @@ export class AccessPolicy {
     return rows.map((r) => ({ seq: r.seq, at: r.at, ownerId: r.owner_id, agentId: r.agent_id, action: r.action, purpose: r.purpose,
       tags: JSON.parse(r.tags), decision: r.decision, reason: r.reason, grantId: r.grant_id, memoryIds: JSON.parse(r.memory_ids) }))
       .filter((e) => !filter?.agentId || e.agentId === filter.agentId);
+  }
+
+  noteAgent(ownerId: string, agentId: string): void { this.db.prepare(`INSERT OR IGNORE INTO agents VALUES (?,?)`).run(ownerId, agentId); }
+  agents(ownerId: string): string[] {
+    const a = (this.db.prepare(`SELECT agent_id FROM agents WHERE owner_id=?`).all(ownerId) as any[]).map((r) => r.agent_id as string);
+    return [...new Set([...a, ...this.listGrants(ownerId).map((g) => g.agentId)])].sort();
   }
 
   close(): void { this.db.close(); }
