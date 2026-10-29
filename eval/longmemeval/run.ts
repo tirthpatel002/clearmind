@@ -176,7 +176,7 @@ async function evalQuestion(q: Question): Promise<Record<string, unknown>> {
     answerCalls.push({ messages: msgs, raw: r.text, finish: r.finishReason, tokens_in: r.tokensIn, tokens_out: r.tokensOut });
     return { content, promptTokens: r.tokensIn ?? 0, completionTokens: r.tokensOut ?? 0, usd: r.costUsd ?? 0, model: r.model, ms: Date.now() - t0 };
   };
-  const cm = new Clearmind({ dir, ownerId: "lme", embedder: cachedEmbedder, chat: chatFn, now: () => clock, config: cmCfg, minSimilarity: cfg.clearmind.recall.minSimilarity });
+  const cm = new Clearmind({ answerPrompt: (cfg.answer as any).system_prompt || undefined, dir, ownerId: "lme", embedder: cachedEmbedder, chat: chatFn, now: () => clock, config: cmCfg, minSimilarity: cfg.clearmind.recall.minSimilarity });
   try {
     // ingest in chronological order with each session's own date as the clock
     let t0 = t();
@@ -230,7 +230,10 @@ async function evalQuestion(q: Question): Promise<Record<string, unknown>> {
     const prompt = anscheckPrompt(q.question_type, q.question, String(q.answer), hypothesis, isAbs);
     const jr = await run.stage("judge", () => chatT(cfg.judge_model, [{ role: "user", content: prompt }], { maxTokens: cfg.judge.max_tokens, retryMaxTokens: (cfg.judge as any).retry_max_tokens, temperature: cfg.judge.temperature }, tr, "judge"));
     lat.judge_ms = t() - t0;
-    const label = parseVerdict(jr.text);
+    const judgeRaw = parseVerdict(jr.text);
+    // Deterministic rule (labelled in the report): on _abs questions, the exact NO_MEMORY reply is an abstention by construction.
+    const judgeOverride = !!((cfg.judge as any).abs_exact_override && isAbs && hypothesis.trim() === NO_MEMORY && !judgeRaw);
+    const label = judgeOverride ? true : judgeRaw;
 
     const retrievedTop = rankedRounds.slice(0, cfg.k);
     const trace = {
@@ -249,7 +252,7 @@ async function evalQuestion(q: Question): Promise<Record<string, unknown>> {
       retrieved_scores: ranked.slice(0, cfg.k).map((m) => m.score), evidence: ev.evidence, gate_abstained: ev.abstained,
       retrieval, hypothesis, abstained: !!ask.abstained, abstained_by: abstainedBy, label,
       judge_raw: jr.text.slice(0, 200), answer_tokens_in: answerCalls.reduce((s, c) => s + (c.tokens_in ?? 0), 0), answer_tokens_out: answerCalls.reduce((s, c) => s + (c.tokens_out ?? 0), 0),
-      answer_truncated: answerCalls.some((c) => c.finish === "length"), truncation_retries: tr.truncations, judge_tokens_in: jr.tokensIn, judge_tokens_out: jr.tokensOut, latency_ms: Object.fromEntries(Object.entries(lat).map(([k, v]) => [k, Math.round(v)])),
+      answer_truncated: answerCalls.some((c) => c.finish === "length"), truncation_retries: tr.truncations, judge_label_raw: judgeRaw, judge_override: judgeOverride, judge_tokens_in: jr.tokensIn, judge_tokens_out: jr.tokensOut, latency_ms: Object.fromEntries(Object.entries(lat).map(([k, v]) => [k, Math.round(v)])),
       at: new Date().toISOString(),
     };
   } finally {
