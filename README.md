@@ -46,24 +46,62 @@ The pieces:
 - **agentmemory** (the library underneath) provides storage (SQLite), retrieval, the lesson distiller and supersession.
 - **Clearmind** adds the user-facing memory model, the access policy, the learning layer, the Nebius wiring, the CLI and the web app.
 
+## Repository layout
+
+A pnpm workspace with three packages. The core library never imports the server or the app.
+
+```
+packages/clearmind/   @clearmind/core: the library (no HTTP, no DOM)
+  src/                index, store, policy, learning, abstain, config, types, format, cli,
+                      providers/nebius
+  tests/              vitest unit tests
+server/               @clearmind/server: thin HTTP layer on one port (127.0.0.1)
+  src/                index (serve), app (request pipeline), auth, http, static (serves app/dist),
+                      routes/{state,memories,access,insights,graph,import,session}, cli (bin)
+  tests/              API tests
+app/                  @clearmind/app: the web UI, built with Vite
+  index.html
+  src/                main, api (fetch + stale-reply guard), state, actions (delegated events), dom,
+                      views/{overview,memory,access,insights,log,import,onboarding},
+                      components/, styles/{tokens,layout,components}.css
+scripts/              seed, demo, scale, bench (import @clearmind/core)
+eval/                 how the benchmark numbers were produced (see bench branch)
+```
+
 ## Setup
 
-Requirements: Node ≥ 22.5 and pnpm. The repo expects `agentmemory` checked out next to it, on branch `hybrid-recall`.
+Requirements: Node ≥ 22.5 and pnpm (via corepack). The repo expects `agentmemory` checked out next to it (`../agentmemory`, worktree `supersession`); `@clearmind/core` links it with `link:`.
 
 ```bash
 git clone <clearmind> && cd clearmind
 corepack pnpm install
-corepack pnpm test                       # unit tests
+corepack pnpm typecheck                  # core, server, app, scripts
+corepack pnpm test                       # unit + API tests (vitest projects)
 # Keys live outside the repo. Load them per process:
 #   NEBIUS_API_KEY=...   (in e.g. ~/.secrets/hackathon.env)
 node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/seed.ts ./data   # realistic 14-day demo data
-node --env-file=$HOME/.secrets/hackathon.env --import tsx src/cli.ts serve --dir ./data --owner tirth --port 8790
+```
+
+**Production** (one port: built UI + API):
+
+```bash
+corepack pnpm --filter @clearmind/app build      # writes app/dist
+node --env-file=$HOME/.secrets/hackathon.env --import tsx server/src/cli.ts serve --dir ./data --user tirth --port 8790
 # open http://127.0.0.1:8790
 ```
 
+**Development** (Vite with hot reload, proxying `/api` to a running server):
+
+```bash
+node --env-file=$HOME/.secrets/hackathon.env --import tsx server/src/cli.ts serve --dir ./data --user tirth --port 8790
+CLEARMIND_API=http://127.0.0.1:8790 corepack pnpm --filter @clearmind/app dev
+```
+
+If `app/dist` is missing, the server answers `/` with 503 and a hint to build.
+
 Without a key, everything except `ask` and lesson distillation works offline: pass `--offline`, and recall falls back to BM25.
 
-CLI: `remember, update, recall, list, history, confirm, conflicts, patterns, lessons, grant, grants, revoke, read, log, ask, serve`. Run `pnpm cli help` for usage.
+CLI: `remember, update, recall, list, history, confirm, conflicts, patterns, lessons, grant, grants, revoke, read, log, ask, serve`. Run `corepack pnpm cli help` for usage.
 
 ## Demo flow (3 minutes)
 
