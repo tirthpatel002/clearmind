@@ -1,0 +1,27 @@
+{
+  "name": "clearmind",
+  "version": "0.1.0",
+  "description": "A memory layer you can see, correct and trust, for people and AI agents.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.5" },
+  "bin": { "clearmind": "./dist/cli.js" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "demo": "tsx scripts/demo.ts",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "agentmemory": "link:../agentmemory/.worktrees/supersession"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
