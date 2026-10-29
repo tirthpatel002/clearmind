@@ -76,3 +76,10 @@ Fixtures for unit validation live in `bench/fixtures/`:
 - `bench/fixtures/data/abstention.jsonl`: 1 case (`abstention`).
 - `bench/fixtures/data/policy.jsonl`: 3 cases (`allowed`, `after_expiry`, `cross_user`).
 - `bench/fixtures/fake-embedder.mjs`: Offline deterministic 64-dimensional feature-hashing unit-vector embedder for testing `--retriever embedding`.
+
+## Datasets and what counts as a benchmark
+
+- Headline: **LongMemEval** (MIT) and **MemoryAgentBench** only.
+- **LoCoMo**: reference only, **non-commercial** license (CC BY-NC 4.0).
+- `policy.jsonl` (81 cases): **our own stress test (synthetic, not an official benchmark)**.
+- Abstention tuning: only the seeded LongMemEval-S dev subset (`~/work/runs/2026-10-29-lme-pilot/dev_ids.json`).
