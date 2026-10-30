@@ -1,5 +1,6 @@
 // Clearmind hackathon demo UI: chat composer docked at the bottom, feature tabs in the top notch.
 import "./demo.css";
+import { mountMap, type MapHandle } from "./map";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -13,11 +14,11 @@ async function api(path: string, body?: unknown): Promise<any> {
 }
 
 const TABS = [
-  ["chat", "Chat"], ["inspect", "Recall inspector"], ["timeline", "Changed facts"], ["learning", "Learning"],
+  ["chat", "Chat"], ["insights", "Insights"], ["map", "Memory map"], ["inspect", "Recall inspector"], ["timeline", "Changed facts"], ["learning", "Learning"],
   ["privacy", "Privacy"], ["numbers", "Numbers"], ["credits", "Credits"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
-const S = { tab: "chat" as Tab, chat: [] as any[], cfg: null as any, lastQ: "", session: `s-${Date.now().toString(36)}`, busy: false, texts: new Map<string, string>(), flash: new Set<string>() };
+const S = { tab: "chat" as Tab, chat: [] as any[], cfg: null as any, lastQ: "", session: `s-${Date.now().toString(36)}`, busy: false, texts: new Map<string, string>(), flash: new Set<string>(), open: new Set<number>(), map: null as MapHandle | null, lastUsed: [] as string[], reflecting: false };
 
 function renderTabs() {
   $("#tabs").innerHTML = TABS.map(([k, l]) => `<button role="tab" data-tab="${k}" class="${S.tab === k ? "on" : ""}">${l}${k === "learning" ? '<span class="exp"> exp</span>' : ""}</button>`).join("");
@@ -32,35 +33,62 @@ function go(t: Tab) { S.tab = t; renderTabs(); void render(); }
 
 const cites = (s: string) => esc(s).replace(/\[([0-9A-Z]{10,})\]/g, (_, id) => `<span class="cite" data-mem="${id}" title="Open memory">${short(id)}</span>`);
 
-function chatItem(m: any): string {
+const KIND: Record<string, string> = { habit: "Habit", usage: "Usage pattern", workflow: "Agent workflow", failure: "Failure lesson", security: "Security" };
+function chatItem(m: any, idx: number): string {
   if (m.role === "user") return `<div class="msg user"><span>${esc(m.q)}</span></div>`;
-  if (m.pending) return `<div class="msg"><div class="card spin">Recalling memories and asking Nemotron...</div></div>`;
-  if (m.error) return `<div class="msg"><div class="card refused">${esc(m.error)}</div></div>`;
+  if (m.pending) return `<div class="msg"><div class="bub spin">Thinking<span class="dots"><i></i><i></i><i></i></span></div></div>`;
+  if (m.error) return `<div class="msg"><div class="bub refused">${esc(m.error)}</div></div>`;
   const r = m.r;
-  if (r.refused) return `<div class="msg"><div class="card refused"><h3>Not enough demo credits</h3><p>${esc(r.reason)}</p><button class="btn dark" data-act="topup">Top up $5.00 demo credits</button></div></div>`;
-  const pctSent = r.tokens.fullHistory ? Math.min(100, (r.tokens.sent / r.tokens.fullHistory) * 100) : 0;
-  const learn = (r.learning ?? []).filter((x: any) => x.after).map((x: any) => `<span class="chip lilac" title="experimental">helpfulness ${x.before?.helpMean ?? 0.5} &rarr; <b>${x.after.helpMean}</b> (n=${x.after.count}) &middot; ${short(x.after.id)}</span>`).join("");
-  const body = r.abstained
-    ? `<div class="card abstain"><div class="big">I don't know.</div><p style="margin:4px 0 0">${esc(r.reason)}</p><div class="metrics"><span class="chip">evidence <b>${r.evidence.toFixed(2)}</b> / threshold ${r.threshold}</span><span class="chip">memories cited: 0</span></div>`
-    : `<div class="card"><p class="ans">${cites(r.answer)}</p>
-       <div class="k">Memories used:</div>${r.cited.map((c: any) => `<div><span class="cite" data-mem="${c.id}">${short(c.id)}</span> ${esc(c.text)}</div>`).join("") || '<div class="k">none cited</div>'}`;
-  return `<div class="msg">${body}
-    <div class="metrics" style="margin-top:10px">
-      <span class="chip sky">recall <b>${r.recallMs} ms</b></span><span class="chip">reader ${r.answerMs} ms</span>
-      <span class="chip">tokens sent <b>${r.tokens.sent.toLocaleString()}</b> vs full history ${r.tokens.fullHistory.toLocaleString()} <span class="k">(${r.tokens.memories} memories)</span></span>
-      <span class="chip good">cost <b>${usd(r.cost.usd)}</b> vs ${usd(r.cost.fullUsd)} full history</span>
-      <span class="chip">balance ${usd(r.wallet.balanceUsd)}</span>
-      <button class="chip" data-act="inspectq" data-q="${esc(r.q)}">inspect recall &rarr;</button>
-    </div>
-    <div class="bar" title="share of full history sent"><i style="width:${pctSent.toFixed(1)}%"></i></div>
-    ${learn ? `<div class="metrics">${learn}<span class="chip warn">learning: experimental</span></div>` : ""}
-  </div></div>`;
+  if (r.refused) return `<div class="msg"><div class="bub refused"><p>${esc(r.reason)}</p><button class="btn dark" data-act="topup">Top up $5.00 demo credits</button></div></div>`;
+  const n = new Map<string, number>(); r.cited.forEach((c: any, i: number) => n.set(c.id, i + 1));
+  const ans = r.abstained ? `<p class="ans">I don't know. ${esc(r.reason)}</p>`
+    : `<p class="ans">${esc(r.answer).replace(/\s*\[([0-9A-Z]{10,})\]/g, (_, id) => `<sup class="mk" data-mem="${id}" title="${esc(S.texts.get(id) ?? "memory")}">${n.get(id) ?? "&middot;"}</sup>`)}</p>`;
+  const open = S.open.has(idx);
+  const pct = r.tokens.fullHistory ? (r.tokens.sent / r.tokens.fullHistory) * 100 : 0;
+  const learn = (r.learning ?? []).filter((x: any) => x.after);
+  const det = !open ? "" : `<div class="det">
+    ${r.abstained ? `<div class="row2"><b>Why no answer</b> evidence ${r.evidence.toFixed(2)} is below the threshold ${r.threshold}, so Clearmind abstains instead of guessing.</div>` : ""}
+    ${r.cited.length ? `<div class="row2"><b>Memories used</b><ol>${r.cited.map((c: any) => `<li><a href="#" data-mem="${c.id}">${esc(c.text)}</a></li>`).join("")}</ol></div>` : ""}
+    ${(r.derived ?? []).map((d: any) => `<div class="row2"><b>${KIND[d.kind] ?? d.kind} insight${d.severity ? ` · ${d.severity}` : ""} · confidence ${d.confidence} · ${d.status}</b> derived from ${d.evidence.length} raw memories:<ul>${d.evidence.map((e: any) => `<li>${esc(e.text)}</li>`).join("")}</ul></div>`).join("")}
+    <div class="row2"><b>Timing</b> recall ${r.recallMs} ms · reader ${r.readerMs ?? r.answerMs} ms · total ${r.answerMs} ms</div>
+    <div class="row2"><b>Tokens</b> ${r.tokens.sent.toLocaleString()} sent vs ${r.tokens.fullHistory.toLocaleString()} for the full history (${pct.toFixed(1)}%, ${r.tokens.memories} memories)</div>
+    <div class="row2"><b>Cost</b> ${usd(r.cost.usd)} vs ${usd(r.cost.fullUsd)} with full history · balance ${usd(r.wallet.balanceUsd)}</div>
+    ${learn.length ? `<div class="row2"><b>Learning</b> <span class="k">(experimental)</span> ${learn.map((x: any) => `helpfulness ${x.before?.helpMean ?? 0.5} → ${x.after.helpMean} for memory ${n.get(x.after.id) ?? short(x.after.id)}`).join("; ")}</div>` : ""}
+    <div class="row2"><a href="#" data-act="inspectq" data-q="${esc(r.q)}">Open in recall inspector</a> · <a href="#" data-act="showmap" data-i="${idx}">Show on memory map</a></div>
+  </div>`;
+  return `<div class="msg"><div class="bub ${r.abstained ? "abst" : ""}">${ans}<a href="#" class="dlink" data-act="det" data-i="${idx}">${open ? "Hide details" : "Details"}</a>${det}</div></div>`;
 }
 
 async function viewChat() {
-  if (!S.chat.length) return `<div class="empty"><h1>Chat with your <b>memory</b></h1><p>Every answer shows the memories it used, recall latency, tokens sent vs full history, and its real cost in demo credits.</p>
-    <p>${["What time is my standup?", "When does my Goa flight leave?", "Who is my manager?", "What is my passport number?", "How do I reach my dentist?"].map((q) => `<button class="btn" data-act="ask" data-q="${q}">${q}</button>`).join(" ")}</p></div>`;
-  return S.chat.map(chatItem).join("");
+  if (!S.chat.length) return `<div class="empty"><h1>Chat with your <b>memory</b></h1><p>Answers cite the memories they come from. Open "Details" under an answer for timings, tokens and cost.</p>
+    <p>${((S.cfg?.samples ?? []) as string[]).map((q) => `<button class="btn" data-act="ask" data-q="${q}">${q}</button>`).join(" ")}</p></div>`;
+  return S.chat.map((m, i) => chatItem(m, i)).join("");
+}
+
+async function viewInsights() {
+  const r = await api("/api/demo/insights");
+  const groups = ["security", "failure", "workflow", "habit", "usage"];
+  const last = r.runs?.[r.runs.length - 1];
+  const head = `<h1>What Clearmind <b>learned</b></h1><p class="lead">Reflect mines the raw memories for repeated habits, usage patterns, agent workflows, failure lessons and security risks. Nemotron only words each finding, and every insight cites the memories it came from.</p>
+    <div class="row"><button class="btn dark" data-act="reflect" ${S.reflecting ? "disabled" : ""}>${S.reflecting ? "Reflecting..." : "Reflect now"}</button>
+    ${last ? `<span class="k">last run ${new Date(last.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })} IST · ${last.mined} findings · ${(last.ms / 1000).toFixed(1)} s · ${usd(last.usd)}</span>` : '<span class="k">not run yet</span>'}</div>`;
+  if (!r.insights.length) return head;
+  return head + groups.map((g) => {
+    const xs = r.insights.filter((i: any) => i.kind === g);
+    if (!xs.length) return "";
+    return `<h3 class="grp">${KIND[g]}${g === "security" ? "" : "s"}</h3>` + xs.map((i: any) => `<details class="ins ${i.status}"><summary>
+      ${i.severity ? `<span class="sev ${i.severity}">${i.severity}</span>` : ""}<span class="st">${esc(i.statement)}</span>
+      <span class="meta">confidence ${i.confidence} · ${i.evidence.length} memories · <span class="status ${i.status}">${i.status}</span></span></summary>
+      <div class="ev">${i.retiredReason ? `<p class="k">Retired: ${esc(i.retiredReason)}</p>` : ""}<p class="k">${esc(i.method)} · seen ${i.firstSeen.slice(0, 10)} to ${i.lastSeen.slice(0, 10)}</p>
+      <ul>${i.evidenceText.map((e: any) => `<li><span class="id">${short(e.id)}</span> ${esc(e.text)}</li>`).join("")}</ul></div></details>`).join("");
+  }).join("");
+}
+
+async function viewMap() {
+  return `<div class="maphead"><h1>Memory <b>map</b></h1><div class="seg">${["graph", "time", "type", "cluster"].map((l) => `<button data-act="layout" data-l="${l}" class="${(S.map?.layout ?? "graph") === l ? "on" : ""}">${l}</button>`).join("")}</div>
+    <div class="legend"><i style="background:#9fd6ff"></i>memory <i style="background:#6b7079"></i>superseded <i style="background:#c7a6ff"></i>insight <i style="background:#ff6b57"></i>security <i style="background:#ffd166"></i>agent run</div></div>
+    <div class="mapwrap" id="mapwrap"><canvas id="mapc"></canvas><canvas id="mapo"></canvas><div class="hcard" id="hcard"></div></div>
+    <p class="k">Lines: supersedes, evidence, fixed-by, same entity, co-used. Hover a dot to read it, click to focus its neighbourhood, click empty space to reset. Rendered with Consona Transformium.</p>`;
 }
 
 async function viewInspect() {
@@ -135,14 +163,16 @@ async function viewCredits() {
     ${S.chat.filter((m) => m.r && !m.r.refused).slice(-1).map((m) => `<div class="card"><h3>Last answer, cost breakdown</h3><table><tr><th>call</th><th>model</th><th>tokens in / out</th><th>cost</th></tr>${m.r.cost.lines.map((l: any) => `<tr><td>${l.kind}</td><td>${esc(l.model)}</td><td class="n">${l.promptTokens} / ${l.completionTokens}</td><td class="n">${usd(l.usd)}</td></tr>`).join("")}<tr><td colspan=3><b>total</b></td><td class="n"><b>${usd(m.r.cost.usd)}</b></td></tr></table></div>`).join("")}`;
 }
 
-const VIEWS: Record<Tab, () => Promise<string>> = { chat: viewChat, inspect: viewInspect, timeline: viewTimeline, learning: viewLearning, privacy: viewPrivacy, numbers: viewNumbers, credits: viewCredits };
+const VIEWS: Record<Tab, () => Promise<string>> = { chat: viewChat, insights: viewInsights, map: viewMap, inspect: viewInspect, timeline: viewTimeline, learning: viewLearning, privacy: viewPrivacy, numbers: viewNumbers, credits: viewCredits };
 
 async function render() {
   const el = $("#content"), t = S.tab;
   try {
     const html = await VIEWS[t]();
     if (S.tab !== t) return;
+    if (t !== "map") { S.map?.destroy(); S.map = null; }
     el.innerHTML = html;
+    if (t === "map") { S.map?.destroy(); S.map = await mountMap($("#mapwrap"), await api("/api/demo/graph"), S.map?.layout ?? "graph"); S.map.pulse(S.lastUsed); }
     if (t === "chat") el.scrollTop = el.scrollHeight;
   } catch (e) { el.innerHTML = `<div class="card refused">${esc((e as Error).message)}</div>`; }
 }
@@ -159,6 +189,7 @@ async function ask(q: string) {
     if (S.cfg) S.cfg.wallet = slot.r.wallet; renderWallet(slot.r.wallet);
     for (const x of slot.r.learning ?? []) S.flash.add(x.after?.id);
     for (const m of slot.r.shown ?? []) S.texts.set(m.id, m.text);
+    S.lastUsed = (slot.r.shown ?? []).map((m: any) => m.id);
   } catch (e) { slot.error = (e as Error).message; }
   slot.pending = false; S.busy = false; btn.disabled = false;
   if (S.tab === "chat") void render();
@@ -173,7 +204,7 @@ function openMem(id: string) {
 document.addEventListener("click", async (ev) => {
   const t = ev.target as HTMLElement;
   const tab = t.closest<HTMLElement>("[data-tab]"); if (tab) return go(tab.dataset.tab as Tab);
-  const mem = t.closest<HTMLElement>("[data-mem]"); if (mem) return openMem(mem.dataset.mem!);
+  const mem = t.closest<HTMLElement>("[data-mem]"); if (mem) { ev.preventDefault(); return openMem(mem.dataset.mem!); }
   const jump = t.closest<HTMLElement>("[data-jump]");
   const a = t.closest<HTMLElement>("[data-act]");
   if (jump || a?.dataset.act === "jump") {
@@ -183,9 +214,13 @@ document.addEventListener("click", async (ev) => {
   }
   if (!a) return;
   const act = a.dataset.act;
+  if (act === "det") { ev.preventDefault(); const i = Number(a.dataset.i); S.open.has(i) ? S.open.delete(i) : S.open.add(i); void render(); return; }
+  if (act === "showmap") { ev.preventDefault(); const r = S.chat[Number(a.dataset.i)]?.r; S.lastUsed = (r?.shown ?? []).map((m: any) => m.id); go("map"); return; }
+  if (act === "layout") { S.map?.setLayout(a.dataset.l as any); document.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("on", b === a)); return; }
+  if (act === "reflect") { S.reflecting = true; void render(); try { await api("/api/demo/reflect", {}); const c = await api("/api/demo/config"); S.cfg.wallet = c.wallet; renderWallet(c.wallet); } catch (e) { alert((e as Error).message); } S.reflecting = false; void render(); return; }
   if (act === "close") $("#drawer").classList.remove("on");
   if (act === "ask") void ask(a.dataset.q!);
-  if (act === "inspectq") { S.lastQ = a.dataset.q!; go("inspect"); }
+  if (act === "inspectq") { ev.preventDefault(); S.lastQ = a.dataset.q!; go("inspect"); }
   if (act === "topup") { const w = await api("/api/demo/topup", { usd: 5 }); S.cfg.wallet = w; renderWallet(w); void render(); }
   if (act === "drain") { const w = await api("/api/demo/set-balance", { usd: 0.001 }); S.cfg.wallet = w; renderWallet(w); void render(); }
   if (act === "forget" || act === "redact") {
