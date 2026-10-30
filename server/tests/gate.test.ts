@@ -45,6 +45,8 @@ describe("access gate", () => {
     expect(sc).not.toMatch(/Secure/);
     const https = await fetch(base + `/?token=${TOKEN}`, { redirect: "manual", headers: { "x-forwarded-proto": "https" } });
     expect(https.headers.get("set-cookie")).toMatch(/Secure/);
+    const px = await fetch(base + `/?token=${TOKEN}`, { redirect: "manual", headers: { "x-forwarded-prefix": "/clearmind" } });
+    expect(px.headers.get("location")).toBe("/clearmind/");
     const cookie = sc.split(";")[0];
     const ok2 = await get("/api/demo/config", cookie);
     expect(ok2.status).toBe(200);

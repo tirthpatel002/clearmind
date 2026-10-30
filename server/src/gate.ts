@@ -32,7 +32,8 @@ export function accessGate(token: string | undefined) {
       const q = url.searchParams.toString();
       res.writeHead(302, {
         "Set-Cookie": `${COOKIE}=${sig}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${https ? "; Secure" : ""}`,
-        Location: url.pathname + (q ? "?" + q : ""),
+        // Behind a proxy that strips a prefix (e.g. /clearmind), it sends X-Forwarded-Prefix so the redirect stays under it.
+        Location: String(req.headers["x-forwarded-prefix"] ?? "").replace(/[^\w\/.-]/g, "").replace(/\/$/, "") + url.pathname + (q ? "?" + q : ""),
         "Cache-Control": "no-store",
       });
       res.end();
