@@ -18,7 +18,7 @@ export function linksOf(f: Node["fields"], esc: (s: unknown) => string): string 
 export function entityCard(m: Node, esc: (s: unknown) => string): string {
   const f = m.fields ?? {}, links = linksOf(f, esc);
   const rows = Object.entries(f).filter(([, x]) => !isLinkField(x.value)).map(([k, x]) => `<div class="ef"><span class="k">${esc(k)}</span> ${esc(fv(x.value).slice(0, 220))}${x.sources?.length ? ` <a class="src" href="${esc(safeUrl(x.sources[0]) ?? "#")}" target="_blank" rel="noopener noreferrer" title="${esc(x.sources.join("\n"))}">source${x.sources.length > 1 ? `s (${x.sources.length})` : ""}</a>` : ""}</div>`).join("");
-  return `<div class="ht entity">entity${m.kind ? ` · ${esc(m.kind)}` : ""}</div><div class="en">${esc(m.name ?? m.text)}</div>${m.aliases?.length ? `<div class="hk">also ${esc(m.aliases.slice(0, 4).join(", "))}</div>` : ""}${links ? `<div class="pl">${links}</div>` : ""}${rows}<div class="hk">${m.memoryCount ?? 0} linked memories${m.history ? ` · ${m.history} superseded field values` : ""}</div>`;
+  return `<div class="ht entity">entity${m.kind ? ` · ${esc(m.kind)}` : ""}</div><div class="en">${esc(m.name ?? m.text)}</div>${m.aliases?.length ? `<div class="hk">also ${esc(m.aliases.slice(0, 4).join(", "))}</div>` : ""}${links ? `<div class="pl">${links}</div>` : ""}${rows}<div class="hk">${m.memoryCount ?? 0} linked memories${m.history ? ` · ${m.history} superseded field values` : ""}</div><button class="btn research sm" data-act="research" data-q="${esc(m.name ?? m.text)}" data-e="${esc(m.id)}" title="Search the public web once (1 Tavily credit) and remember what it finds, linked to this entity">Research</button>`;
 }
 interface Edge { from: string; to: string; type: string; label?: string }
 

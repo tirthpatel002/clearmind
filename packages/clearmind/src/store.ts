@@ -137,6 +137,9 @@ export class Clearmind {
     });
   }
 
+  /** The configured chat model (undefined offline). */
+  get chatFn(): ChatFn | undefined { return this.opts.chat; }
+
   get userId(): string {
     return this.opts.ownerId;
   }
@@ -219,7 +222,7 @@ export class Clearmind {
    */
   async remember(
     text: string,
-    o: { tags?: string[]; key?: string; supersedes?: string; confidence?: number; embedding?: Float32Array; visibleTo?: string[] } = {},
+    o: { tags?: string[]; key?: string; supersedes?: string; confidence?: number; embedding?: Float32Array; visibleTo?: string[]; extra?: Record<string, unknown>; sources?: string[]; fetchedAt?: string } = {},
   ): Promise<Memory & { confirmed?: boolean }> {
     text = String(text ?? "").trim();
     if (!text) throw new Error("memory text is empty");
@@ -254,10 +257,10 @@ export class Clearmind {
       createdAt: at,
       confidence: o.confidence ?? this.cfg.confidence.initial,
       ...(o.embedding ? { embedding: o.embedding } : {}),
-      extra: { tags, ...(o.key ? { key: o.key } : {}), confirmations: 0, lastConfirmedAt: at, ...(o.visibleTo ? { visibleTo: normVisibleTo(o.visibleTo) } : {}) },
+      extra: { ...(o.extra ?? {}), tags, ...(o.key ? { key: o.key } : {}), confirmations: 0, lastConfirmedAt: at, ...(o.visibleTo ? { visibleTo: normVisibleTo(o.visibleTo) } : {}) },
     });
     if (o.visibleTo) this.writeAcl(db, "memory", l.lessonId, normVisibleTo(o.visibleTo));
-    if (this.entityCfg.enabled) await this.linkEntities(l.lessonId, text);
+    if (this.entityCfg.enabled) await this.linkEntities(l.lessonId, text, { sources: o.sources, fetchedAt: o.fetchedAt });
     return this.toMemory(l);
   }
 

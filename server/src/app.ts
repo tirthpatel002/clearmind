@@ -10,6 +10,7 @@ import { HttpError, readJson, sendJson } from "./http.js";
 import { matchRoute } from "./routes/index.js";
 import type { RouteContext } from "./routes/index.js";
 import { signIn, signOut } from "./routes/session.js";
+import { researchRoutes, type ResearchDeps } from "./routes/research.js";
 import { StaticApp } from "./static.js";
 
 /** Open per-user stores kept in memory; the oldest is closed beyond this. */
@@ -31,6 +32,8 @@ export interface AppOptions {
    * Resolve the viewer for a request. Default: `req.viewer` when a session middleware (tenancy) set it; otherwise
    * unrestricted only when no workspace users are configured (cfg.workspace.users), else "guest". Headers are never trusted.
    */
+  /** Research route dependencies (tests inject a fake search; default reads TAVILY_API_KEY from env). */
+  research?: ResearchDeps;
   resolveViewer?: (req: IncomingMessage & { viewer?: Viewer }, user: string) => Viewer | undefined;
 }
 
@@ -50,6 +53,7 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
   const web = new StaticApp(o.appDir);
   const resolveViewer = o.resolveViewer ?? defaultViewer(cfg);
   const users = new Map<string, Clearmind>();
+  const research = researchRoutes(o.research);
   const reqLimit = new RateLimiter(cfg.rateLimit.requestsPerMin);
   const modelLimit = new RateLimiter(cfg.rateLimit.modelCallsPerMin);
 
@@ -96,7 +100,8 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
       if (!user) return sendJson(res, 401, { error: "sign in first", signIn: true });
       if (!reqLimit.take(user)) throw new HttpError(429, "too many requests, slow down");
 
-      const found = matchRoute(method, path);
+      const rr = research.find((r) => r.method === method && r.path === path);
+      const found = rr ? { route: rr, params: [] as string[] } : matchRoute(method, path);
       if (!found) return sendJson(res, 404, { error: "not found" });
       const ctx: RouteContext = {
         req,
