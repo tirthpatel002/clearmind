@@ -7,6 +7,8 @@ import { validUserId } from "@clearmind/core";
 export interface AuthProvider {
   /** The signed-in user for this request, or null. */
   identify(req: IncomingMessage): string | null;
+  /** The user from a valid session only (no default fallback), or null. */
+  session?(req: IncomingMessage): string | null;
   /** Start a session; returns a Set-Cookie header value. Providers without local sessions may throw. */
   signIn(userId: string): string;
   signOut(): string;
@@ -26,6 +28,10 @@ export class LocalAuth implements AuthProvider {
   }
 
   identify(req: IncomingMessage): string | null {
+    return this.session(req) ?? this.o.defaultUser;
+  }
+
+  session(req: IncomingMessage): string | null {
     const c = new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]+)`).exec(req.headers.cookie ?? "")?.[1];
     if (c) {
       const [u, sig] = decodeURIComponent(c).split(".");
@@ -35,7 +41,7 @@ export class LocalAuth implements AuthProvider {
         if (a.length === b.length && timingSafeEqual(a, b)) return u;
       }
     }
-    return this.o.defaultUser;
+    return null;
   }
 
   signIn(userId: string): string {

@@ -11,6 +11,8 @@ import { matchRoute } from "./routes/index.js";
 import type { RouteContext } from "./routes/index.js";
 import { signIn, signOut } from "./routes/session.js";
 import { StaticApp } from "./static.js";
+import { Workspace } from "./workspace.js";
+import { whoAmI } from "./routes/session.js";
 
 /** Open per-user stores kept in memory; the oldest is closed beyond this. */
 const MAX_OPEN_USERS = 64;
@@ -27,9 +29,11 @@ export interface AppOptions {
   now?: () => Date;
   /** Directory of the built web app (defaults to app/dist). */
   appDir?: string;
+  /** Workspace users (overrides cfg.auth.workspaceUsers). */
+  workspace?: Workspace;
   /**
-   * Resolve the viewer for a request. Default: `req.viewer` when a session middleware (tenancy) set it; otherwise
-   * unrestricted only when no workspace users are configured (cfg.workspace.users), else "guest". Headers are never trusted.
+   * Resolve the viewer for a request. Default: `req.viewer` as set by the session middleware; otherwise
+   * unrestricted only when no workspace users are configured (cfg.auth.workspaceUsers), else "guest". Headers are never trusted.
    */
   resolveViewer?: (req: IncomingMessage & { viewer?: Viewer }, user: string) => Viewer | undefined;
 }
@@ -38,8 +42,7 @@ export interface AppOptions {
 export function defaultViewer(cfg: Config) {
   return (req: IncomingMessage & { viewer?: Viewer }): Viewer | undefined => {
     if (req.viewer) return req.viewer;
-    const users = (cfg as unknown as { workspace?: { users?: unknown[] } }).workspace?.users;
-    return Array.isArray(users) && users.length ? { id: "guest" } : undefined;
+    return cfg.auth.workspaceUsers ? { id: "guest" } : undefined;
   };
 }
 
@@ -49,6 +52,9 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
   const auth = o.auth ?? new LocalAuth({ defaultUser: cfg.auth.defaultUser });
   const web = new StaticApp(o.appDir);
   const resolveViewer = o.resolveViewer ?? defaultViewer(cfg);
+  const ws = o.workspace ?? (cfg.auth.workspaceUsers ? Workspace.load(cfg.auth.workspaceUsers) : null);
+  /** In a workspace everyone reads the owner's store; the viewer decides what they see. */
+  const owner = cfg.auth.defaultUser ?? "workspace";
   const users = new Map<string, Clearmind>();
   const reqLimit = new RateLimiter(cfg.rateLimit.requestsPerMin);
   const modelLimit = new RateLimiter(cfg.rateLimit.modelCallsPerMin);
@@ -83,18 +89,23 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
     const origin = String(req.headers.origin ?? ""), allowed = (process.env.CLEARMIND_CORS_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     if (origin && allowed.includes(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin); res.setHeader("Access-Control-Allow-Credentials", "true"); res.setHeader("Vary", "Origin");
-      if (method === "OPTIONS") { res.writeHead(204, { "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "content-type", "Access-Control-Max-Age": "600" }); res.end(); return; }
+      if (method === "OPTIONS") { res.writeHead(204, { "Access-Control-Allow-Methods": "GET, POST, DELETE", "Access-Control-Allow-Headers": "content-type", "Access-Control-Max-Age": "600" }); res.end(); return; }
     }
     try {
       if (web.serve(method, path, res)) return;
-      if (method === "POST" && path === "/api/session") return await signIn(res, auth, await readJson(req, 10_000));
-      if (method === "POST" && path === "/api/logout") return signOut(res, auth);
+      // Viewer middleware: every API request gets req.viewer (workspace: from the session cookie only; legacy: the user, full access)
+      const sid = ws ? (auth.session ? auth.session(req) : auth.identify(req)) : auth.identify(req);
+      req.viewer = ws ? ws.viewer(sid) : sid ? { id: sid, admin: true } : undefined;
+      if (method === "GET" && path === "/api/workspace/users") return ws ? sendJson(res, 200, { users: ws.list() }) : sendJson(res, 404, { error: "no workspace users configured" });
+      if (method === "POST" && path === "/api/session") return await signIn(res, auth, await readJson(req, 10_000), ws);
+      if (method === "GET" && path === "/api/session") return whoAmI(req, res, ws);
+      if ((method === "POST" && path === "/api/logout") || (method === "DELETE" && path === "/api/session")) return signOut(res, auth);
       if (method === "POST" && req.headers["content-type"]?.split(";")[0] !== "application/json") {
         throw new HttpError(415, "use application/json");
       }
-      const user = auth.identify(req);
+      const user = ws ? (req.viewer ? owner : null) : auth.identify(req);
       if (!user) return sendJson(res, 401, { error: "sign in first", signIn: true });
-      if (!reqLimit.take(user)) throw new HttpError(429, "too many requests, slow down");
+      if (!reqLimit.take(req.viewer?.id ?? user)) throw new HttpError(429, "too many requests, slow down");
 
       const found = matchRoute(method, path);
       if (!found) return sendJson(res, 404, { error: "not found" });
@@ -102,13 +113,14 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
         req,
         user,
         cm: forUser(user),
-        viewer: ((req as IncomingMessage & { viewer?: Viewer }).viewer = resolveViewer(req as IncomingMessage & { viewer?: Viewer }, user)),
+        // privacy resolver runs after the session middleware above (req.viewer already set when signed in)
+        viewer: (req.viewer = resolveViewer(req, user)),
         cfg,
         query: url.searchParams,
         params: found.params,
         body: (max) => readJson(req, max),
         useModel: () => {
-          if (!modelLimit.take(user)) throw new HttpError(429, "too many model calls, try again in a minute");
+          if (!modelLimit.take(req.viewer?.id ?? user)) throw new HttpError(429, "too many model calls, try again in a minute");
         },
         isDemo: () => isDemo(user),
       };

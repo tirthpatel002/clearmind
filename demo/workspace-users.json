@@ -1,0 +1,177 @@
+{
+ "source": "Judges as listed on https://nebiusglobalaihackathon.devpost.com/ (accessed Oct 30, 2026). Public name, title and company only.",
+ "users": [
+  {
+   "id": "admin",
+   "name": "Workspace admin",
+   "role": "admin"
+  },
+  {
+   "id": "judge-nancy-agarwal",
+   "name": "Nancy Agarwal",
+   "role": "member",
+   "title": "Senior Software Engineer",
+   "org": "NVIDIA"
+  },
+  {
+   "id": "judge-abhinav-balasubramanian",
+   "name": "Abhinav Balasubramanian",
+   "role": "member",
+   "title": "Staff AI Engineer",
+   "org": "NVIDIA"
+  },
+  {
+   "id": "judge-dylan-bristot",
+   "name": "Dylan Bristot",
+   "role": "member",
+   "title": "Founding PMM",
+   "org": "Nebius Token Factory"
+  },
+  {
+   "id": "judge-abdulmajed-raja",
+   "name": "AbdulMajed Raja",
+   "role": "member",
+   "title": "Developer Relations Lead (Token Factory) - APJ",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-rob-spectre",
+   "name": "Rob Spectre",
+   "role": "member",
+   "title": "Developer Relations Advisor",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-evan-rimer",
+   "name": "Evan Rimer",
+   "role": "member",
+   "title": "Forward Deployed Engineer",
+   "org": "Tavily"
+  },
+  {
+   "id": "judge-lakshmi-rameish",
+   "name": "Lakshmi Rameish",
+   "role": "member",
+   "title": "Senior System Software Engineer",
+   "org": "NVIDIA"
+  },
+  {
+   "id": "judge-surbhi-jha",
+   "name": "Surbhi Jha",
+   "role": "member",
+   "title": "Senior Software Engineer",
+   "org": "NVIDIA"
+  },
+  {
+   "id": "judge-joe-sarabia",
+   "name": "Joe Sarabia",
+   "role": "member",
+   "title": "Director of Product, Ecosystem",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-marouane-khoukh",
+   "name": "Marouane Khoukh",
+   "role": "member",
+   "title": "Technical Developer Advocate",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-ricky-johnson",
+   "name": "Ricky Johnson",
+   "role": "member",
+   "title": "Developer Relations",
+   "org": "Tavily"
+  },
+  {
+   "id": "judge-selena-williams",
+   "name": "Selena Williams",
+   "role": "member",
+   "title": "System Software Engineer",
+   "org": "NVIDIA"
+  },
+  {
+   "id": "judge-aleksandr-patrushev",
+   "name": "Aleksandr Patrushev",
+   "role": "member",
+   "title": "Head of Product Management, ML/AI",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-unmesh-kurup",
+   "name": "Unmesh Kurup",
+   "role": "member",
+   "title": "Chief ML Researcher, Product",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-daniel-myers",
+   "name": "Daniel Myers",
+   "role": "member",
+   "title": "Director of Developer Relations",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-jacquie-capur",
+   "name": "Jacquie Capur",
+   "role": "member",
+   "title": "Senior Developer Advocate",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-lakshya-prakash-agarwal",
+   "name": "Lakshya Prakash Agarwal",
+   "role": "member",
+   "title": "Forward Deployed Engineer",
+   "org": "Tavily"
+  },
+  {
+   "id": "judge-johnny-nunez",
+   "name": "Johnny Nunez",
+   "role": "member",
+   "title": "AI Developer Advocate - Physical AI & Robotics",
+   "org": "NVIDIA"
+  },
+  {
+   "id": "judge-evan-helda",
+   "name": "Evan Helda",
+   "role": "member",
+   "title": "Head of GTM Physical AI",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-mikhail-rozhkov",
+   "name": "Mikhail Rozhkov",
+   "role": "member",
+   "title": "Technical Product Manager - Serverless AI",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-dhruv-diddi",
+   "name": "Dhruv Diddi",
+   "role": "member",
+   "title": "Principal - Physical AI Ecosystem",
+   "org": "Nebius"
+  },
+  {
+   "id": "judge-aditya-sahu",
+   "name": "Aditya Sahu",
+   "role": "member",
+   "title": "TME, Jetson Platform",
+   "org": "NVIDIA"
+  },
+  {
+   "id": "judge-sayali-kandarkar",
+   "name": "Sayali Kandarkar",
+   "role": "member",
+   "title": "Senior AI/ML Engineer",
+   "org": "NVIDIA"
+  },
+  {
+   "id": "guest",
+   "name": "Guest judge",
+   "role": "guest",
+   "title": "Not on the list? Sees workspace-shared items only."
+  }
+ ]
+}

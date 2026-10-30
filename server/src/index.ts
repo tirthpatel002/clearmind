@@ -8,6 +8,8 @@ export type { App, AppOptions } from "./app.js";
 export { LocalAuth, RateLimiter } from "./auth.js";
 export type { AuthProvider } from "./auth.js";
 export { HttpError } from "./http.js";
+export { Workspace } from "./workspace.js";
+export type { Viewer, WorkspaceUser } from "./workspace.js";
 
 export interface ServeOptions {
   offline?: boolean;
@@ -24,7 +26,7 @@ export async function serve(o: ServeOptions = {}): Promise<void> {
   });
   await new Promise<void>((ok) => srv.listen(cfg.port, cfg.host, ok));
   const exposure = isLoopback(cfg.host) ? ", local only" : ", EXPOSED: allowPublic is set";
-  const who = cfg.auth.defaultUser ? `, default user ${cfg.auth.defaultUser}` : ", sign-in required";
+  const who = cfg.auth.workspaceUsers ? `, workspace sign-in (${cfg.auth.workspaceUsers})` : cfg.auth.defaultUser ? `, default user ${cfg.auth.defaultUser}` : ", sign-in required";
   console.log(`clearmind web on http://${cfg.host}:${cfg.port} (data ${cfg.dataDir}${exposure}${who})`);
   await new Promise(() => {});
 }

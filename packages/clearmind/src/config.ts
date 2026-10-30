@@ -13,7 +13,7 @@ export interface Config {
   patterns: { minSupport: number; minDays: number; minShared: number; embeddingLink: number };
   spend: { globalCapUsd: number; perUserCapUsd: number };
   rateLimit: { requestsPerMin: number; modelCallsPerMin: number };
-  auth: { provider: "local"; defaultUser: string | null };
+  auth: { provider: "local"; defaultUser: string | null; /** JSON file of workspace users who sign in to the default user's store (null = one store per user). */ workspaceUsers?: string | null };
   ui: { pageSize: number; clusterAbove: number; maxNodes: number };
   import: { maxItems: number; maxBytes: number };
   /** Opt-in recall/answer features (see features/config.ts); omitted = all off. */
@@ -61,7 +61,7 @@ export const ENV_MAP: Record<string, [string, (v: string) => unknown]> = {
   CLEARMIND_PATTERN_EMBED_LINK: ["patterns.embeddingLink", num],
   CLEARMIND_SPEND_CAP_USD: ["spend.globalCapUsd", num], CLEARMIND_USER_SPEND_CAP_USD: ["spend.perUserCapUsd", num],
   CLEARMIND_RATE_LIMIT_PER_MIN: ["rateLimit.requestsPerMin", num], CLEARMIND_MODEL_RATE_LIMIT_PER_MIN: ["rateLimit.modelCallsPerMin", num],
-  CLEARMIND_DEFAULT_USER: ["auth.defaultUser", str], CLEARMIND_PAGE_SIZE: ["ui.pageSize", num], CLEARMIND_CLUSTER_ABOVE: ["ui.clusterAbove", num],
+  CLEARMIND_DEFAULT_USER: ["auth.defaultUser", str], CLEARMIND_WORKSPACE_USERS: ["auth.workspaceUsers", str], CLEARMIND_PAGE_SIZE: ["ui.pageSize", num], CLEARMIND_CLUSTER_ABOVE: ["ui.clusterAbove", num],
 };
 
 function merge<T>(a: T, b: any): T {
