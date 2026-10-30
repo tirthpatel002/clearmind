@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { Clearmind, SpendLedger } from "@clearmind/core";
-import type { Config } from "@clearmind/core";
+import type { Config, Viewer } from "@clearmind/core";
 import { LocalAuth, RateLimiter } from "./auth.js";
 import type { AuthProvider } from "./auth.js";
 import { HttpError, readJson, sendJson } from "./http.js";
@@ -27,6 +27,20 @@ export interface AppOptions {
   now?: () => Date;
   /** Directory of the built web app (defaults to app/dist). */
   appDir?: string;
+  /**
+   * Resolve the viewer for a request. Default: `req.viewer` when a session middleware (tenancy) set it; otherwise
+   * unrestricted only when no workspace users are configured (cfg.workspace.users), else "guest". Headers are never trusted.
+   */
+  resolveViewer?: (req: IncomingMessage & { viewer?: Viewer }, user: string) => Viewer | undefined;
+}
+
+/** Default viewer resolver (see AppOptions.resolveViewer). */
+export function defaultViewer(cfg: Config) {
+  return (req: IncomingMessage & { viewer?: Viewer }): Viewer | undefined => {
+    if (req.viewer) return req.viewer;
+    const users = (cfg as unknown as { workspace?: { users?: unknown[] } }).workspace?.users;
+    return Array.isArray(users) && users.length ? { id: "guest" } : undefined;
+  };
 }
 
 export function createApp(cfg: Config, o: AppOptions = {}): App {
@@ -34,6 +48,7 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
   const ledger = new SpendLedger(join(dir, "spend.jsonl"), cfg.spend, cfg.nebius.prices);
   const auth = o.auth ?? new LocalAuth({ defaultUser: cfg.auth.defaultUser });
   const web = new StaticApp(o.appDir);
+  const resolveViewer = o.resolveViewer ?? defaultViewer(cfg);
   const users = new Map<string, Clearmind>();
   const reqLimit = new RateLimiter(cfg.rateLimit.requestsPerMin);
   const modelLimit = new RateLimiter(cfg.rateLimit.modelCallsPerMin);
@@ -87,6 +102,7 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
         req,
         user,
         cm: forUser(user),
+        viewer: ((req as IncomingMessage & { viewer?: Viewer }).viewer = resolveViewer(req as IncomingMessage & { viewer?: Viewer }, user)),
         cfg,
         query: url.searchParams,
         params: found.params,

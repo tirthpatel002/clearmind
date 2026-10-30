@@ -2,8 +2,8 @@
 import type { InsightsPage } from "@clearmind/core/types";
 import type { Route, RouteContext } from "./types.js";
 
-async function insights({ cm, query: q }: RouteContext): Promise<InsightsPage> {
-  const ins = await cm.insights();
+async function insights({ cm, query: q, viewer }: RouteContext): Promise<InsightsPage> {
+  const ins = await cm.insights({ viewer });
   const kind = q.get("kind") ?? "patterns";
   const offset = Math.max(0, Number(q.get("cursor") ?? 0));
   const limit = Math.min(100, Number(q.get("limit") ?? 12));
@@ -12,7 +12,7 @@ async function insights({ cm, query: q }: RouteContext): Promise<InsightsPage> {
   const ids = items.flatMap((x) => ("a" in x ? [x.a, x.b] : x.evidence.slice(0, 8)));
   return {
     items,
-    texts: await cm.textsFor(ids),
+    texts: await cm.textsFor(ids, viewer),
     total: list.length,
     nextCursor: offset + limit < list.length ? offset + limit : null,
     stale: ins.stale,

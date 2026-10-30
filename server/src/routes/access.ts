@@ -51,10 +51,11 @@ export const accessRoutes: Route[] = [
   {
     method: "POST",
     path: "/api/ask",
-    handle: async ({ cm, body, useModel }) => {
+    handle: async ({ cm, body, useModel, viewer }) => {
       const b = await body(20_000);
       useModel();
       return cm.ask(String(b.question ?? ""), {
+        viewer,
         agentId: b.agentId || undefined,
         purpose: b.purpose || undefined,
         tags: b.tags?.length ? b.tags : undefined,

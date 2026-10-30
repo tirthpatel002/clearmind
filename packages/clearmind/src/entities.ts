@@ -95,8 +95,9 @@ export class EntityStore {
     return r ? this.row(r) : null;
   }
   /** Paginated list, most-linked first. q matches name/alias keys (prefix or substring), type is exact. */
-  list(o: { type?: string; q?: string; limit?: number; offset?: number } = {}): Entity[] {
+  list(o: { type?: string; q?: string; limit?: number; offset?: number; only?: string[] } = {}): Entity[] {
     const w: string[] = ["e.user_id=?"], p: any[] = [this.user];
+    if (o.only) { w.push("e.id IN (SELECT value FROM json_each(?))"); p.push(JSON.stringify(o.only)); }
     if (o.type) { w.push("e.type=?"); p.push(o.type); }
     if (o.q) { w.push(`e.id IN (SELECT entity_id FROM entity_aliases WHERE user_id=? AND key LIKE ?)`); p.push(this.user, `%${aliasKey(o.q)}%`); }
     p.push(Math.min(o.limit ?? 100, 10_000), o.offset ?? 0);

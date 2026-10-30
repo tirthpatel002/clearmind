@@ -1,14 +1,15 @@
 // Bringing memories in: bulk import (text/JSON/CSV) and fact extraction from a chat transcript.
+import { visibleToFor } from "./memories.js";
 import type { Route } from "./types.js";
 
 export const importRoutes: Route[] = [
   {
     method: "POST",
     path: "/api/import",
-    handle: async ({ cm, cfg, body, useModel }) => {
+    handle: async ({ cm, cfg, body, useModel, viewer }) => {
       const b = await body(cfg.import.maxBytes + 10_000);
       useModel();
-      return cm.importMemories(String(b.data ?? ""), b.format, { defaultScope: b.scope || undefined });
+      return cm.importMemories(String(b.data ?? ""), b.format, { defaultScope: b.scope || undefined, visibleTo: visibleToFor(b.visibleTo, viewer) });
     },
   },
   {
