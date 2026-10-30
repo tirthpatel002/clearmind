@@ -6,10 +6,14 @@
 // Usage:
 //   tsx scripts/tavily-research.ts                      # = --dry-run: print plan + credit estimate, no network, no files
 //   tsx scripts/tavily-research.ts --mock --out /tmp/x  # deterministic, clearly-labelled MOCK files (mock: true), offline
-//   node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/tavily-research.ts --run [--max-credits 400]
+//   node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/tavily-research.ts --run [--max-credits 500]
 //   options: --out <dir> (default tavily) --force (rewrite existing files) --delay-ms 400 --only judges|sponsors
 // TAVILY_API_KEY is read from process.env only. Credits (Tavily docs): search basic = 1, advanced = 2.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+/** atomic write: tmp file then rename, so an interrupted run never leaves a partial file that would be skipped as existing. */
+export function writeAtomic(file: string, data: string) { mkdirSync(dirname(file), { recursive: true }); const tmp = `${file}.tmp-${process.pid}`; writeFileSync(tmp, data); renameSync(tmp, file); }
+/** raw Tavily JSON per call, outside the repo, when TAVILY_RAW_DIR is set (never overwrites: suffixes .1, .2 ...). */
+function saveRaw(q: Planned, j: unknown) { const d = process.env.TAVILY_RAW_DIR; if (!d) return; let f = join(d, `${q.path}.json`), n = 0; while (existsSync(f)) f = join(d, `${q.path}.${++n}.json`); writeAtomic(f, JSON.stringify({ id: q.id, query: q.query, extractUrls: q.extractUrls, fetchedAt: new Date().toISOString(), response: j }, null, 2)); }
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -111,6 +115,7 @@ export function tavilyFetcher(key: string, opts: { retries?: number; baseDelayMs
         status = r.status;
         if (r.ok) {
           const j: any = await r.json();
+          saveRaw(q, j);
           if (ex) return { answer: "", results: (j.results ?? []).map((x: any) => ({ title: String(x.url ?? ""), url: String(x.url ?? ""), content: String(x.raw_content ?? "") })) };
           return { answer: String(j.answer ?? ""), results: (j.results ?? []).map((x: any) => ({ title: String(x.title ?? ""), url: String(x.url ?? ""),
             content: String(x.content ?? ""), publishedDate: x.published_date ? String(x.published_date) : undefined, score: typeof x.score === "number" ? x.score : undefined })) };
@@ -153,8 +158,7 @@ export async function research(plan: Planned[], o: { outDir: string; fetcher: Fe
         } catch (e) { log(`  ! fallback ${(e as Error).message} for ${q.id}`); }
       }
     }
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, render(q, a, { fetchedAt: now(), mock: o.mock, credits: spent, match, retried }));
+    writeAtomic(file, render(q, a, { fetchedAt: now(), mock: o.mock, credits: spent, match, retried }));
     st.written.push(q.path);
     log(`[${st.creditsUsed}/${o.maxCredits} credits] ${q.id} -> ${a.results.length} results`);
   }
@@ -170,8 +174,7 @@ export function writeIndex(plan: Planned[], outDir: string, mock: boolean) {
     mock ? "> **MOCK DATA** index for testing.\n" : "", `${have.length} of ${plan.length} planned files present.`, "",
     "## Sponsors and hackathon", "", ...have.filter((q) => q.group === "sponsors").map(line), "",
     "## Judges", "", ...judges.flatMap((s) => { const qs = have.filter((q) => q.judge?.slug === s); return [`### ${qs[0]!.judge!.name}`, "", ...qs.map(line), ""]; })];
-  mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, "INDEX.md"), md.join("\n"));
+  writeAtomic(join(outDir, "INDEX.md"), md.join("\n"));
 }
 
 async function main() {
@@ -179,7 +182,7 @@ async function main() {
   const only = opt("--only", "") as "judges" | "sponsors" | "";
   const { judges, config } = loadInputs();
   const plan = buildPlan(judges, config, only || undefined);
-  const maxCredits = Number(opt("--max-credits", "400")), outDir = opt("--out", join(ROOT, "tavily"));
+  const maxCredits = Number(opt("--max-credits", "500")), outDir = opt("--out", join(ROOT, "tavily"));
   const est = estimate(plan);
   if (!flag("--mock") && !flag("--run")) {
     for (const q of plan) console.log(`${q.credits}cr ${q.depth.padEnd(8)} ${q.id.padEnd(48)} ${q.query}${q.extractUrls ? "  [extract]" : ""}${q.includeDomains ? `  [domains: ${q.includeDomains.join(",")}]` : ""}`);
