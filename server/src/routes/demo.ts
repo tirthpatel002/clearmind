@@ -18,13 +18,13 @@ import { readInsights } from "./demo-reflect.js";
 
 /** Sample questions shown as buttons; their embeddings are pre-warmed at start. */
 export const SAMPLE_QUESTIONS = [
-  "Why did my grocery order agent fail last week, and is it fixed?",
-  "What do I usually do on Friday evenings?",
-  "Any security issues I should know about?",
-  "What is the fastest way you have learned to file my expenses?",
-  "What do I usually ask you in the morning?",
-  "What time is my daily standup now?",
-  "What is my passport number?",
+  "Who are the judges?",
+  "What are the judging criteria for this hackathon?",
+  "How does Clearmind decide who can see a memory?",
+  "How does recall rank and pick memories?",
+  "Which Nebius models does Clearmind use, and for what?",
+  "What happens when memory can't answer a question?",
+  "How does Clearmind handle a fact that changed?",
 ];
 
 /** Demo wallet: starting credit (USD), stored in <dataDir>/demo-wallet.json. Not real money. */
