@@ -86,13 +86,14 @@ describe("ingest: chunking", () => {
     const ids = r.chunks.map((c) => c.id);
     expect(ids).toEqual(expect.arrayContaining(["(file)", "add", "Counter", "Counter.inc", "Counter.reset"]));
     const add = r.chunks.find((c) => c.id === "add")!;
-    expect(add).toMatchObject({ kind: "function", startLine: 4, endLine: 6 });
-    expect(add.text).toContain("src/math.ts | function add | lines 4-6");
+    expect(add).toMatchObject({ kind: "function", startLine: 3, endLine: 6 }); // doc comment travels with its function
+    expect(add.text).toContain("src/math.ts | function add | lines 3-6 | typescript");
     expect(add.text).toContain("doc: Add two numbers.");
     expect(r.chunks.find((c) => c.id === "Counter.inc")!.kind).toBe("method");
     const file = r.chunks[0]!.text;
-    expect(file).toContain("exports: add (function), Counter (class)");
-    expect(file).toContain('import { readFileSync } from "node:fs";');
+    expect(file).toContain("exports: add, Counter");
+    expect(file).toContain("- add (function, lines 3-6)");
+    expect(file).toContain("imports: node:fs");
   });
 
   it("splits python by def/class with docstrings", async () => {
@@ -105,8 +106,8 @@ describe("ingest: chunking", () => {
     const r = await chunkFile("docs/notes.md", MD);
     expect(r.visibleTo).toEqual(["viewer-a"]);
     expect(r.source).toBe("https://example.com/notes");
-    expect(r.chunks.map((c) => c.id)).toEqual(["Notes", "Notes > Setup"]);
-    expect(r.chunks[1]!.text).toContain("# not a heading");
+    expect(r.chunks.map((c) => c.id)).toEqual(["(file)", "(frontmatter)", "Notes", "Notes > Setup"]);
+    expect(r.chunks[3]!.text).toContain("# not a heading");
     expect(parseFrontmatter("---\nvisibleTo:\n  - a\n  - b\n---\nx").data.visibleTo).toEqual(["a", "b"]);
   });
 
@@ -156,7 +157,7 @@ describe("ingest: store", () => {
     const rows = db.prepare("SELECT text, extra FROM lessons WHERE status='active'").all() as any[];
     const add = rows.find((x) => x.text.includes("function add |"));
     const ex = JSON.parse(add.extra);
-    expect(ex.source).toMatchObject({ path: "src/math.ts", startLine: 4, endLine: 6, kind: "function", symbol: "add" });
+    expect(ex.source).toMatchObject({ path: "src/math.ts", startLine: 3, endLine: 6, kind: "function", symbol: "add" });
     expect(ex.source.commit).toMatch(/^[0-9a-f]{40}$/);
     expect(ex.visibleTo).toEqual(["workspace"]);
     expect(ex.tags).toEqual(expect.arrayContaining(["file-ts", "dir-src", "kind-function"]));
@@ -189,7 +190,7 @@ describe("ingest: store", () => {
 
     rmSync(join(d, "src", "tool.py"));
     const del = await ingestPath(cm, d);
-    expect(del.retired).toBe(4); // (file), greet, Box, Box.size
+    expect(del.retired).toBe(5); // (file), (imports), greet, Box, Box.size
     expect((await cm.list()).some((m) => m.text.includes("tool.py"))).toBe(false);
     await cm.close();
   });
