@@ -5,6 +5,8 @@ export { ADMIN, WORKSPACE, allows, fullAccess, normVisibleTo } from "./visibilit
 export type { Viewer } from "./visibility.js";
 export { EntityStore, aliasKey } from "./entities.js";
 export type { Entity, EntityDetail, EntityField, EntityLink, EntityRelation, Provenance } from "./entities.js";
+export { distil, tavilySearch } from "./research.js";
+export type { Distilled, SearchFn, SearchHit, SearchResult } from "./research.js";
 export { extractEntities } from "./extract-entities.js";
 export type { ClearmindOptions, RecallEvidence } from "./store.js";
 export { AccessPolicy } from "./policy.js";

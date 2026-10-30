@@ -137,6 +137,9 @@ export class Clearmind {
     });
   }
 
+  /** The configured chat model (undefined offline). */
+  get chatFn(): ChatFn | undefined { return this.opts.chat; }
+
   get userId(): string {
     return this.opts.ownerId;
   }
@@ -227,6 +230,8 @@ export class Clearmind {
       visibleTo?: string[];
       /** false = always store, never fold into a near-identical memory. */
       dedup?: boolean;
+      /** Provenance URLs / fetch time passed to entity linking. */
+      sources?: string[]; fetchedAt?: string;
     } = {},
   ): Promise<Memory & { confirmed?: boolean }> {
     text = String(text ?? "").trim();
@@ -268,7 +273,7 @@ export class Clearmind {
       },
     });
     if (o.visibleTo) this.writeAcl(db, "memory", l.lessonId, normVisibleTo(o.visibleTo));
-    if (this.entityCfg.enabled) await this.linkEntities(l.lessonId, text);
+    if (this.entityCfg.enabled) await this.linkEntities(l.lessonId, text, { sources: o.sources, fetchedAt: o.fetchedAt });
     return this.toMemory(l);
   }
 

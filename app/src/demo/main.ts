@@ -211,9 +211,34 @@ function chatItem(m: any, idx: number): string {
   if (m.role === "user") return `<div class="msg user"><span>${esc(m.q)}</span></div>`;
   if (m.pending) return `<div class="msg"><div class="bub spin">Thinking<span class="dots"><i></i><i></i><i></i></span></div></div>`;
   if (m.error) return `<div class="msg"><div class="bub refused">${esc(m.error)}</div></div>`;
+  if (m.research) return researchItem(m.research);
   const r = m.r;
   if (r.refused) return `<div class="msg"><div class="bub refused"><p>${esc(r.reason)}</p><button class="btn dark" data-act="topup">Top up $5.00 demo credits</button></div></div>`;
-  return `<div class="msg"><div class="bub ${r.abstained ? "abst" : ""}"><div class="ans">${answerHtml(r)}</div>${webSources(r)}<a href="#" class="dlink" data-act="inspect" data-i="${idx}">Details</a></div></div>`;
+  return `<div class="msg"><div class="bub ${r.abstained ? "abst" : ""}"><div class="ans">${answerHtml(r)}</div>${webSources(r)}${r.abstained || r.lowConfidence ? researchBtn(S.chat[idx - 1]?.q ?? "") : ""}<a href="#" class="dlink" data-act="inspect" data-i="${idx}">Details</a></div></div>`;
+}
+/** Offered, never auto-run: one click = one Tavily basic search (1 credit) + one distil call on the configured model. */
+export const researchBtn = (q: string, entityId = "", label = "Research &amp; remember") =>
+  `<button class="btn research" data-act="research" data-q="${esc(q)}" data-e="${esc(entityId)}" title="Searches the public web once (1 Tavily credit) and saves what it finds as memories with source links">${label}</button>`;
+function researchItem(r: any): string {
+  if (r.pending) return `<div class="msg"><div class="bub spin">Researching the web<span class="dots"><i></i><i></i><i></i></span></div></div>`;
+  if (!r.memories.length) return `<div class="msg"><div class="bub abst"><p>Nothing useful found for <b>${esc(r.query)}</b>.</p></div></div>`;
+  const priv = !r.memories[0].visibleTo.includes("workspace");
+  return `<div class="msg"><div class="bub rsch"><p><span class="badge web">web</span> Remembered ${r.memories.length} new ${r.memories.length === 1 ? "memory" : "memories"} for <b>${esc(r.query)}</b>${priv ? ' <span class="k">(private to you)</span>' : ""}</p>
+    <ul>${r.memories.map((x: any) => `<li>${esc(x.text.replace(/\s*Source: .*$/, ""))} ${x.sources.map((s: any) => `<a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(s.title.slice(0, 40))}</a>`).join(" · ")}</li>`).join("")}</ul>
+    <p class="k">Tavily search · ${r.credits} credit · ${esc(r.model ?? "no model: title + snippet")}</p></div></div>`;
+}
+async function research(query: string, entityId?: string) {
+  if (!query.trim() || S.busy) return;
+  S.busy = true;
+  const slot: any = { role: "bot", research: { query, pending: true, memories: [] } };
+  S.chat.push({ role: "user", q: `Research: ${query}` }, slot);
+  if (S.tab !== "chat") go("chat"); else void render();
+  try {
+    const r = await api("/api/research", { query, ...(entityId ? { entityId } : {}) });
+    slot.research = r; for (const x of r.memories) S.texts.set(x.id, x.text);
+    S.lastUsed = r.memories.map((x: any) => x.id); S.graph = null; // the map reloads with the new memories
+  } catch (e) { delete slot.research; slot.error = (e as Error).message; }
+  S.busy = false; if (S.tab === "chat") void render();
 }
 function viewChat() {
   if (!S.chat.length) return `<div class="empty"><h1>Ask your <b>memory</b></h1><p>Answers cite the memories they come from.</p>
@@ -410,6 +435,7 @@ document.addEventListener("click", async (ev) => {
   if (act === "inspect") return openInspector(Number(a.dataset.i));
   if (act === "close") $("#drawer").classList.remove("on");
   if (act === "ask") void ask(a.dataset.q!);
+  if (act === "research") { (a as HTMLButtonElement).disabled = true; return void research(a.dataset.q!, a.dataset.e || undefined); }
   if (act === "askq") { const q = a.dataset.q!; go("chat"); void ask(q); }
   if (act === "mem") { S.mem = a.dataset.v as MemView; renderTabs(); void render(); }
   if (act === "layout") { S.layout = a.dataset.l as Layout; S.map?.setLayout(S.layout); document.querySelectorAll("[data-act=layout]").forEach((b) => b.classList.toggle("on", b === a)); }
