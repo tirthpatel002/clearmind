@@ -1,0 +1,119 @@
+// Demo routes for reflect (derived insights) and the memory graph (relations between memories).
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import type { Clearmind, Config } from "@clearmind/core";
+import { mineAll, reconcile, REFLECT_SYSTEM } from "../reflect.js";
+import type { Candidate, Insight, MemRow } from "../reflect.js";
+import type { Route, RouteContext } from "./types.js";
+
+type Chat = (m: { role: string; content: string }[], o?: { json?: boolean; maxTokens?: number }) => Promise<{ content: string; usd: number; promptTokens: number; completionTokens: number }>;
+type Emb = (t: string[]) => Promise<ArrayLike<number>[]>;
+const opts = (cm: Clearmind) => (cm as unknown as { opts: { chat?: Chat; embedder?: Emb } }).opts;
+const insightFile = (cfg: Config, user: string) => join(cfg.dataDir, `insights.${user}.json`);
+export function readInsights(cfg: Config, user: string): { insights: Insight[]; runs: { at: string; usd: number; ms: number; mined: number; llm: number }[] } {
+  try { return JSON.parse(readFileSync(insightFile(cfg, user), "utf8")); } catch { return { insights: [], runs: [] }; }
+}
+
+interface DbRow { lesson_id: string; text: string; created_at: string; trigger: string | null; status: string; replaced_by: string | null; extra: string }
+function allRows(cfg: Config, user: string): DbRow[] {
+  const d = new DatabaseSync(join(cfg.dataDir, "memory.db"), { readOnly: true });
+  try {
+    return d.prepare(`SELECT lesson_id,text,created_at,trigger,status,replaced_by,extra FROM lessons WHERE namespace='clearmind' AND user_id=? AND agent_id='owner' AND status IN ('active','replaced') ORDER BY created_at`).all(user) as unknown as DbRow[];
+  } finally { d.close(); }
+}
+const toMem = (r: DbRow): MemRow => ({ id: r.lesson_id, text: r.text, createdAt: r.created_at, tags: String(r.trigger ?? "").split(/\s+/).filter(Boolean) });
+
+/** Ask the reader to word one mined cluster; it may only cite ids from that cluster. Falls back to the mined statement. */
+async function word(chat: Chat | undefined, c: Candidate): Promise<{ statement: string; cite: string[]; usd: number; llm: boolean }> {
+  if (!chat) return { statement: c.fallback, cite: c.evidence, usd: 0, llm: false };
+  for (let attempt = 0; attempt < 2; attempt++) try {
+    const r = await chat([{ role: "system", content: REFLECT_SYSTEM }, { role: "user", content: c.prompt }], { json: true, maxTokens: 900 });
+    const j = JSON.parse(r.content.replace(/^```(?:json)?|```$/g, "").trim());
+    const cite = (Array.isArray(j.cite) ? j.cite : []).map(String).filter((id: string) => c.evidence.includes(id));
+    const st = String(j.statement ?? "").replace(/\s*\[[0-9A-Z]{10,}\]/g, "").trim();
+    if (!st || !cite.length) continue; // no citation, no LLM wording
+    return { statement: st, cite, usd: r.usd, llm: true };
+  } catch { /* retry once, then fall back to the mined statement */ }
+  return { statement: c.fallback, cite: c.evidence, usd: 0, llm: false };
+}
+
+async function pool<T, R>(xs: T[], n: number, f: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(xs.length); let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, xs.length) }, async () => { while (i < xs.length) { const k = i++; out[k] = await f(xs[k]!); } }));
+  return out;
+}
+
+const memText = (i: Insight) => `${i.status === "retired" ? "Retired insight (no longer holds)" : "Insight"} (${i.kind}${i.severity ? `, severity ${i.severity}` : ""}, confidence ${i.confidence}; derived by Clearmind reflect from ${i.evidence.length} memories, ${i.firstSeen.slice(0, 10)} to ${i.lastSeen.slice(0, 10)}): ${i.statement}`;
+
+/** Run reflect: mine, word, reconcile, and store each insight as an 'insight' memory (key insight:<sig>). */
+export async function reflect(cm: Clearmind, cfg: Config, user: string) {
+  const t0 = performance.now();
+  const rows = allRows(cfg, user).filter((r) => r.status === "active").map(toMem);
+  const cands = mineAll(rows);
+  const o = opts(cm);
+  const worded = await pool(cands, 4, (c) => word(o.chat, c));
+  const prev = readInsights(cfg, user);
+  const now = new Date().toISOString();
+  const fresh = cands.map((c, i) => ({ ...c, statement: worded[i]!.statement, evidence: c.evidence, stats: { ...c.stats, cited: worded[i]!.cite, wordedBy: worded[i]!.llm ? cfg.nebius.chatModel : "template" } }));
+  const ins = reconcile(prev.insights, fresh, now).filter((i) => i.evidence.length > 0); // no insight without evidence
+  // store as memories so answers can use and cite them; same key supersedes the previous wording
+  const texts = ins.map(memText);
+  const vecs = o.embedder ? await o.embedder(texts) : [];
+  for (const [k, i] of ins.entries()) {
+    const m = await cm.remember(texts[k]!, { tags: ["insight", i.kind, ...(i.severity ? [`severity-${i.severity}`] : [])], key: `insight:${i.sig}`, embedding: vecs[k] ? Float32Array.from(vecs[k]!) : undefined } as never);
+    i.memoryId = (m as { id: string }).id;
+  }
+  const usd = worded.reduce((a, w) => a + w.usd, 0);
+  const run = { at: now, usd, ms: Math.round(performance.now() - t0), mined: cands.length, llm: worded.filter((w) => w.llm).length };
+  writeFileSync(insightFile(cfg, user), JSON.stringify({ insights: ins, runs: [...prev.runs, run] }, null, 1));
+  return { insights: ins, run };
+}
+
+// ---------- relations graph ----------
+const NOT_ENTITY = new Set("Maya Chat Clearmind Journal Meeting Agent Email Action Calendar Profile Team Food Trip Org Breakfast Lunch Woke Around Evening Saturday Sunday Monday Tuesday Wednesday Thursday Friday Sep Oct Nov Dec IST The From Your If Install Installed Stayed Went Decided Agreed Usability Contrast Screen Target Renamed Dark Figma Insight Retired Gym Promotion".split(" "));
+export function graph(cfg: Config, user: string) {
+  const rs = allRows(cfg, user);
+  const { insights } = readInsights(cfg, user);
+  const insByMem = new Map(insights.filter((i) => i.memoryId).map((i) => [i.memoryId!, i]));
+  const secEvidence = new Set(insights.filter((i) => i.kind === "security" && i.status !== "retired").flatMap((i) => i.evidence));
+  const nodes = rs.map((r) => {
+    const tags = String(r.trigger ?? "").split(/\s+/);
+    const ins = insByMem.get(r.lesson_id);
+    const type = ins ? (ins.kind === "security" ? "security" : "insight") : r.status === "replaced" ? "superseded" : tags.includes("agent-run") ? "agent-run" : secEvidence.has(r.lesson_id) ? "security-flag" : "memory";
+    return { id: r.lesson_id, text: r.text, type, createdAt: r.created_at, status: r.status, tags, confidence: ins?.confidence ?? null, kind: ins?.kind ?? null, severity: ins?.severity ?? null, insightStatus: ins?.status ?? null };
+  });
+  const ids = new Set(nodes.map((n) => n.id));
+  const edges: { from: string; to: string; type: string; label?: string; w?: number }[] = [];
+  for (const r of rs) if (r.replaced_by && ids.has(r.replaced_by)) edges.push({ from: r.replaced_by, to: r.lesson_id, type: "supersedes" });
+  for (const i of insights) {
+    if (!i.memoryId || !ids.has(i.memoryId)) continue;
+    for (const e of i.evidence) if (ids.has(e)) edges.push({ from: i.memoryId, to: e, type: "evidence" });
+    for (const rel of i.relations ?? []) if (ids.has(rel.from) && ids.has(rel.to)) edges.push({ from: rel.from, to: rel.to, type: rel.type });
+  }
+  for (const r of rs) {
+    const links = (JSON.parse(r.extra || "{}").learn?.links ?? {}) as Record<string, number>;
+    for (const [to, w] of Object.entries(links)) if (ids.has(to) && r.lesson_id < to) edges.push({ from: r.lesson_id, to, type: "co-used", w: Number(w.toFixed(3)) });
+  }
+  // same entity (person/place/project/site): proper nouns or domains shared by 2..25 memories, chained in time
+  const ent = new Map<string, string[]>();
+  for (const r of rs) {
+    if (insByMem.has(r.lesson_id)) continue;
+    const found = new Set<string>();
+    for (const m of r.text.matchAll(/(?<![.!?]\s)(?<!^)\b([A-Z][a-z]{2,}(?: [A-Z][a-z]{2,})?)\b|\b([a-z0-9-]+\.example)\b/g)) { const e = (m[1] ?? m[2])!; if (!NOT_ENTITY.has(e.split(" ")[0]!)) found.add(e); }
+    for (const e of found) (ent.get(e) ?? ent.set(e, []).get(e)!).push(r.lesson_id);
+  }
+  for (const [e, xs] of ent) if (xs.length >= 2 && xs.length <= 25) for (let k = 1; k < xs.length; k++) edges.push({ from: xs[k - 1]!, to: xs[k]!, type: "same-entity", label: e });
+  const counts: Record<string, number> = {}; for (const e of edges) counts[e.type] = (counts[e.type] ?? 0) + 1;
+  return { nodes, edges, counts, entities: [...ent].filter(([, x]) => x.length >= 2 && x.length <= 25).map(([e, x]) => ({ e, n: x.length })).sort((a, b) => b.n - a.n).slice(0, 40) };
+}
+
+export const reflectRoutes: Route[] = [
+  { method: "POST", path: "/api/demo/reflect", handle: async ({ cm, cfg, user, useModel }: RouteContext) => { useModel(); return reflect(cm, cfg, user); } },
+  { method: "GET", path: "/api/demo/insights", handle: ({ cfg, user }: RouteContext) => {
+    const r = readInsights(cfg, user); const text = new Map(allRows(cfg, user).map((x) => [x.lesson_id, x.text]));
+    return { ...r, insights: r.insights.map((i) => ({ ...i, evidenceText: i.evidence.map((id) => ({ id, text: text.get(id) ?? "(deleted)" })) })) };
+  } },
+  { method: "GET", path: "/api/demo/graph", handle: ({ cfg, user }: RouteContext) => graph(cfg, user) },
+];
+export const hasInsights = (cfg: Config, user: string) => existsSync(insightFile(cfg, user));
