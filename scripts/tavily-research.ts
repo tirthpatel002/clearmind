@@ -6,7 +6,7 @@
 // Usage:
 //   tsx scripts/tavily-research.ts                      # = --dry-run: print plan + credit estimate, no network, no files
 //   tsx scripts/tavily-research.ts --mock --out /tmp/x  # deterministic, clearly-labelled MOCK files (mock: true), offline
-//   node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/tavily-research.ts --run [--max-credits 300]
+//   node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/tavily-research.ts --run [--max-credits 500]
 //   options: --out <dir> (default tavily) --force (rewrite existing files) --delay-ms 400 --only judges|sponsors
 // TAVILY_API_KEY is read from process.env only. Credits (Tavily docs): search basic = 1, advanced = 2.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -179,7 +179,7 @@ async function main() {
   const only = opt("--only", "") as "judges" | "sponsors" | "";
   const { judges, config } = loadInputs();
   const plan = buildPlan(judges, config, only || undefined);
-  const maxCredits = Number(opt("--max-credits", "300")), outDir = opt("--out", join(ROOT, "tavily"));
+  const maxCredits = Number(opt("--max-credits", "500")), outDir = opt("--out", join(ROOT, "tavily"));
   const est = estimate(plan);
   if (!flag("--mock") && !flag("--run")) {
     for (const q of plan) console.log(`${q.credits}cr ${q.depth.padEnd(8)} ${q.id.padEnd(48)} ${q.query}${q.extractUrls ? "  [extract]" : ""}${q.includeDomains ? `  [domains: ${q.includeDomains.join(",")}]` : ""}`);

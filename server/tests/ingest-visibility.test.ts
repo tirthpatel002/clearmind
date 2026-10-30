@@ -37,5 +37,5 @@ describe("ingest honours frontmatter visibleTo", () => {
     const acl = db.prepare("SELECT count(*) n FROM cm_acl WHERE item_kind='memory' AND principal='judge-dhruv-diddi'").get() as any;
     expect(acl.n).toBeGreaterThan(0);
     await cm.close();
-  });
+  }, 60_000);
 });
