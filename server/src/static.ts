@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerResponse } from "node:http";
+import { sendBody } from "./http.js";
 
 /** Default location of the Vite build, relative to this file. */
 export const DEFAULT_APP_DIR = fileURLToPath(new URL("../../app/dist", import.meta.url));
@@ -48,8 +49,7 @@ export class StaticApp {
       res.end("The web app is not built yet. Run: pnpm build");
       return;
     }
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP });
-    res.end(this.index);
+    sendBody(res, 200, this.index, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP });
   }
 
   private sendAsset(path: string, res: ServerResponse): void {
@@ -60,10 +60,9 @@ export class StaticApp {
       res.end("not found");
       return;
     }
-    res.writeHead(200, {
-      "Content-Type": TYPES[extname(file)] ?? "application/octet-stream",
-      "Cache-Control": "public, max-age=31536000, immutable",
-    });
+    const type = TYPES[extname(file)] ?? "application/octet-stream", h = { "Content-Type": type, "Cache-Control": "public, max-age=31536000, immutable" };
+    if (/^(text\/|application\/(javascript|json)|image\/svg)/.test(type)) return sendBody(res, 200, readFileSync(file), h);
+    res.writeHead(200, h);
     res.end(readFileSync(file));
   }
 

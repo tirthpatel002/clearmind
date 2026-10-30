@@ -8,6 +8,7 @@ import { stateRoutes } from "./state.js";
 import { demoRoutes } from "./demo.js";
 import { reflectRoutes } from "./demo-reflect.js";
 import { entityRoutes } from "./entities.js";
+import { streamRoutes } from "./stream.js";
 import type { Route } from "./types.js";
 
 export type { Route, RouteContext } from "./types.js";
@@ -22,6 +23,7 @@ export const routes: Route[] = [
   ...importRoutes,
   ...demoRoutes,
   ...reflectRoutes,
+  ...streamRoutes,
 ];
 
 /** Find the route for a request; returns it with the captured path groups. */

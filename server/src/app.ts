@@ -6,7 +6,7 @@ import { Clearmind, SpendLedger } from "@clearmind/core";
 import type { Config, Viewer } from "@clearmind/core";
 import { LocalAuth, RateLimiter } from "./auth.js";
 import type { AuthProvider } from "./auth.js";
-import { HttpError, readJson, sendJson } from "./http.js";
+import { HttpError, readJson, sendJson, sendSse, SseReply } from "./http.js";
 import { matchRoute } from "./routes/index.js";
 import type { RouteContext } from "./routes/index.js";
 import { signIn, signOut } from "./routes/session.js";
@@ -142,7 +142,9 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
         isDemo: () => isDemo(user),
         research: researcher,
       };
-      sendJson(res, 200, await found.route.handle(ctx));
+      const out = await found.route.handle(ctx);
+      if (out instanceof SseReply) return await sendSse(req, res, out);
+      sendJson(res, 200, out);
     } catch (e) {
       sendJson(res, e instanceof HttpError ? e.code : 400, { error: (e as Error).message });
     }
