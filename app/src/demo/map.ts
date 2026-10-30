@@ -87,9 +87,9 @@ export async function mountMap(wrap: HTMLElement, g: { nodes: Node[]; edges: Edg
   const hubs = nodes.map((x, i) => (x.type === "entity" ? i : -1)).filter((i) => i >= 0);
   const target = (l: Layout) => {
     if (!mask) return L[l];
-    // matches keep their place; the rest drift outward so the filtered set reads as the live graph
+    // matches keep their place; the rest move far outside the view, so a search shows only the matches
     const p = Float32Array.from(L[l]);
-    for (let i = 0; i < n; i++) if (!mask[i]) { p[i * 3] *= 1.45; p[i * 3 + 1] *= 1.45; }
+    for (let i = 0; i < n; i++) if (!mask[i]) { p[i * 3] = p[i * 3]! * 60 + 80; p[i * 3 + 1] = p[i * 3 + 1]! * 60 + 80; }
     return p;
   };
   // non-matches are recoloured to a dark tone in the particle engine itself, so the dimming is unmistakable
@@ -130,8 +130,7 @@ export async function mountMap(wrap: HTMLElement, g: { nodes: Node[]; edges: Edg
       ctx.beginPath(); ctx.moveTo(scr[a * 2]!, scr[a * 2 + 1]!); ctx.lineTo(scr[b * 2]!, scr[b * 2 + 1]!); ctx.stroke();
     }
     if (mask && focus < 0) {
-      ctx.fillStyle = "rgba(18,18,18,.82)"; for (let i = 0; i < n; i++) if (!mask[i]) { ctx.beginPath(); ctx.arc(scr[i * 2]!, scr[i * 2 + 1]!, 6, 0, 7); ctx.fill(); }
-      // matches glow: soft halo plus a ring (blue for text, lavender for semantic-only)
+            // matches glow: soft halo plus a ring (blue for text, lavender for semantic-only)
       const tt = performance.now() / 1000;
       for (let i = 0; i < n; i++) if (mask[i]) {
         const x = scr[i * 2]!, y = scr[i * 2 + 1]!, sem = mask[i] === 2, g = ctx.createRadialGradient(x, y, 2, x, y, 18);
@@ -144,6 +143,7 @@ export async function mountMap(wrap: HTMLElement, g: { nodes: Node[]; edges: Edg
     ctx.font = "600 11px Inter, system-ui, sans-serif"; ctx.textAlign = "center";
     for (const i of hubs) {
       const dim = !!(mask && !mask[i]);
+      if (dim) continue; // hidden while a search is active
       const x = scr[i * 2]!, y = scr[i * 2 + 1]!, r = 6 + Math.min(8, Math.sqrt(nodes[i]!.memoryCount ?? 1) * 1.6);
       ctx.fillStyle = dim ? "rgba(46,48,54,.9)" : "rgba(76,154,255,.95)"; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
       ctx.strokeStyle = dim ? "rgba(0,0,0,.4)" : "rgba(10,28,56,.9)"; ctx.lineWidth = 1.5; ctx.stroke();
@@ -193,23 +193,30 @@ export async function mountMap(wrap: HTMLElement, g: { nodes: Node[]; edges: Edg
     const { best: b0, x, y } = pick(ev); const best = force >= 0 ? force : mask && b0 >= 0 && !mask[b0] ? -1 : b0; hover = best; ov.style.cursor = best >= 0 ? "pointer" : "default";
     hoverEdge = best < 0 && force < 0 ? pickEdge(x, y) : -1;
     if (hoverEdge >= 0) { ov.style.cursor = "pointer"; edgeCard(hoverEdge, x, y); return; }
-    if (best < 0) { showPinned(); return; }
+    if (best < 0 || (pinned >= 0 && best !== pinned)) { showPinned(); return; }
     const m = nodes[best]!, rel = [...adj[best]!].length;
     card.classList.toggle("pinned", pinned >= 0 && best === pinned);
     if (m.type === "entity") { card.innerHTML = entityCard(m, esc); }
     else card.innerHTML = `<div class="ht ${m.type}">${esc(m.type)}${m.kind ? ` · ${esc(m.kind)}` : ""}${m.severity ? ` · ${esc(m.severity)}` : ""}</div><div>${esc(memLine(m.text, 260))}</div>${splitMem(m.text).chip ? `<div class="hk">${esc(splitMem(m.text).chip)}</div>` : ""}${(() => { const s = m.type === "web" ? sourceOf(m.text) : null; return s ? `<div class="webline"><span class="badge web">web</span> Public web data gathered by the demo seeder via Tavily: <a href="${esc(safeUrl(s.url) ?? "#")}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(s.title.slice(0, 60))}</a></div>` : ""; })()}<div class="hk">${m.createdAt.slice(0, 10)} · ${rel} links${m.confidence != null ? ` · confidence ${m.confidence}` : ""}</div>`;
     card.style.display = "block"; card.style.left = `${Math.min(x + 14, wrap.clientWidth - 330)}px`; card.style.top = `${Math.min(y + 14, wrap.clientHeight - 140)}px`;
   };
-  // clicking an entity pins its card so the profile and source links can be clicked
+  // clicking any node opens a scrollable side panel with its full details
+  const sideHtml = (i: number) => {
+    const m = nodes[i]!, nb = [...adj[i]!].slice(0, 60);
+    const head = m.type === "entity" ? entityCard(m, esc) : `<div class="ht ${m.type}">${esc(m.type)}${m.kind ? ` · ${esc(m.kind)}` : ""}${m.severity ? ` · ${esc(m.severity)}` : ""}</div><div class="full">${esc(m.text)}</div>${(() => { const s = m.type === "web" ? sourceOf(m.text) : null; return s ? `<div class="webline"><span class="badge web">web</span> <a href="${esc(safeUrl(s.url) ?? "#")}" target="_blank" rel="noopener noreferrer">${esc(s.title.slice(0, 80))}</a></div>` : ""; })()}<div class="hk">${m.createdAt.slice(0, 10)}${m.confidence != null ? ` · confidence ${m.confidence}` : ""}</div>`;
+    const links = nb.length ? `<div class="ht" style="margin-top:12px">${adj[i]!.size} links</div><ul class="nbl">${nb.map((j) => `<li><span class="hk">${esc(kindOf(j))}</span><br>${esc(snip(j))}</li>`).join("")}</ul>` : "";
+    return `<button class="side-x" title="Close (Esc)">×</button>${head}${links}`;
+  };
   let pinned = -1, pinHtml = "", pinL = "", pinT = "";
-  const showPinned = () => { if (pinned < 0) { card.style.display = "none"; card.classList.remove("pinned"); return; } card.innerHTML = pinHtml; card.style.left = pinL; card.style.top = pinT; card.classList.add("pinned"); card.style.display = "block"; };
+  const showPinned = () => { if (pinned < 0) { card.style.display = "none"; card.classList.remove("pinned", "side"); return; } card.innerHTML = pinHtml; card.style.left = pinL; card.style.top = pinT; card.classList.add("pinned", "side"); card.style.display = "block"; };
   const clear = () => { focus = -1; hoverEdge = -1; pinned = -1; hover = -1; showPinned(); };
   const onClick = (ev: MouseEvent) => { if (justDragged) return; const { best: b0, x, y } = pick(ev);
     const ek = b0 < 0 ? pickEdge(x, y) : -1; const best = ek >= 0 ? otherEnd(ek) : b0; hoverEdge = -1; if (ek >= 0) { focus = -1; pinned = -1; } if (best < 0 || best === focus) { clear(); onMove(ev); return; }
-    focus = best; pinned = nodes[best]!.type === "entity" ? best : -1; onMove(ev, ek >= 0 ? best : -1); if (pinned >= 0) { pinHtml = card.innerHTML; pinL = card.style.left; pinT = card.style.top; card.classList.add("pinned"); } };
+    focus = best; pinned = best; pinHtml = sideHtml(best); pinL = ""; pinT = ""; card.scrollTop = 0; showPinned(); };
   // leaving the map clears focus, except when moving onto the pinned card to click its links
-  const onLeave = (ev: MouseEvent) => { if (pinned >= 0 && ev.relatedTarget instanceof Node && card.contains(ev.relatedTarget)) { hover = -1; showPinned(); return; } clear(); };
-  const onCardLeave = (ev: MouseEvent) => { if (pinned >= 0 && !(ev.relatedTarget instanceof Node && ov.contains(ev.relatedTarget))) clear(); };
+  const onLeave = () => { hover = -1; hoverEdge = -1; if (pinned >= 0) { showPinned(); return; } clear(); };
+  const onCardLeave = () => {};
+  card.addEventListener("click", (ev) => { if ((ev.target as HTMLElement).closest?.(".side-x")) clear(); });
   const onKey = (ev: KeyboardEvent) => { if (ev.key === "Escape") clear(); };
   const rb = wrap.querySelector<HTMLElement>("#mapreset"); rb?.addEventListener("click", resetView);
   ov.addEventListener("mousedown", onDown); addEventListener("mousemove", onDragMove); addEventListener("mouseup", onUp); ov.addEventListener("wheel", onWheel, { passive: false }); ov.addEventListener("dblclick", onDbl);

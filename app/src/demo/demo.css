@@ -123,3 +123,8 @@ details.ins.semonly>summary::after{content:"semantic";font-size:10.5px;color:#7a
 .mchip{display:inline-block;margin-top:2px;padding:1px 7px;border-radius:999px;font-size:11px;color:var(--ink2);background:var(--line);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 #drawer .mbody{-webkit-line-clamp:4;line-clamp:4}
 .mstat{margin:8px 2px}
+
+.hcard.side{display:block;position:absolute;left:auto!important;top:0!important;right:0;bottom:0;width:380px;max-width:92%;overflow-y:auto;border-radius:14px 0 0 14px;padding:16px 16px 24px;pointer-events:auto;z-index:4}
+.hcard.side .full{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.45;margin-top:4px}
+.hcard .side-x{position:sticky;top:0;float:right;border:0;background:#f1f2f5;border-radius:8px;width:28px;height:28px;font-size:18px;line-height:1;cursor:pointer;z-index:1}
+.hcard .nbl{list-style:none;margin:6px 0 0;padding:0}.hcard .nbl li{padding:6px 0;border-top:1px solid #eceef2;font-size:12px;line-height:1.35}
