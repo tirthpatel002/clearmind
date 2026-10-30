@@ -59,7 +59,7 @@ function chatItem(m: any): string {
 
 async function viewChat() {
   if (!S.chat.length) return `<div class="empty"><h1>Chat with your <b>memory</b></h1><p>Every answer shows the memories it used, recall latency, tokens sent vs full history, and its real cost in demo credits.</p>
-    <p>${["What time is my standup?", "When is my flight to Delhi?", "What is my passport number?", "How do I reach my dentist?"].map((q) => `<button class="btn" data-act="ask" data-q="${q}">${q}</button>`).join(" ")}</p></div>`;
+    <p>${["What time is my standup?", "When does my Goa flight leave?", "Who is my manager?", "What is my passport number?", "How do I reach my dentist?"].map((q) => `<button class="btn" data-act="ask" data-q="${q}">${q}</button>`).join(" ")}</p></div>`;
   return S.chat.map(chatItem).join("");
 }
 
