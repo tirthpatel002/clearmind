@@ -25,6 +25,13 @@ console.log(price === null
   ? `est embedding tokens ${plan.estTokens} (chars/4); pass --price <usd per 1M> for a cost estimate`
   : `est embedding cost ≈ $${((plan.estTokens / 1e6) * price).toFixed(4)} at $${price}/1M tokens (entity embeddings extra; chat not used unless entities.llm is on)`);
 
+// Chat-model cost: the ingest itself makes no chat calls. With config entities.llm on, every written memory gets one
+// entity-extraction call (system prompt ≈ 75 tokens + memory text capped at 3000 chars; reply capped at 500 tokens).
+const llmOn = (() => { try { return !!(loadConfig(dir ? { overrides: { dataDir: dir } } : {}) as any).entities?.llm; } catch { return false; } })();
+const chatIn = plan.chatInputChars.reduce((a, c) => a + Math.ceil(c / 4) + 75, 0);
+console.log(`chat model (entity pass, entities.llm=${llmOn ? "on" : "off"}): ${llmOn ? plan.chatInputChars.length : 0} calls` +
+  ` (if turned on: ${plan.chatInputChars.length} calls, ≈${chatIn} input tokens, ≤${plan.chatInputChars.length * 500} output tokens, typically ≈${plan.chatInputChars.length * 150})`);
+
 if (!run) { console.log("dry run only; pass --run --dir <dataDir> --user <id> to write"); process.exit(0); }
 const cfg = loadConfig({ overrides: { dataDir: dir } });
 const cm = Clearmind.fromEnv(dir!, user!, { offline: process.argv.includes("--offline"), config: cfg });
