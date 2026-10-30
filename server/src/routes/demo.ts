@@ -353,14 +353,15 @@ function localEmbed() {
 }
 const toI8 = (v: Float32Array) => Buffer.from(Int8Array.from(v, (x) => Math.max(-127, Math.min(127, Math.round(x * 127)))).buffer).toString("base64");
 let localBusy: Promise<unknown> | null = null;
-export async function localIndex(cfg: Config, user: string, extra: { lesson_id: string; text: string }[] = []) {
+export async function localIndex(cfg: Config, user: string, extra: { lesson_id: string; text: string }[] = [], maxCompute = Infinity) {
   const file = join(cfg.dataDir, `local-emb.${user}.json`);
   let idx: { model: string; dims: number; items: Record<string, { h: string; v: string }> } = { model: LOCAL_MODEL, dims: LOCAL_DIMS, items: {} };
   try { const j = JSON.parse(readFileSync(file, "utf8")); if (j.model === LOCAL_MODEL && j.dims === LOCAL_DIMS) idx = j; } catch { /* new */ }
   const all = [...rows(cfg, user, false), ...extra] as { lesson_id: string; text: string }[], h = (s: string) => createHash("sha1").update(s).digest("hex").slice(0, 12);
   const need = all.filter((r) => idx.items[r.lesson_id]?.h !== h(r.text));
   let ms = 0;
-  if (need.length) {
+  // in the server, a big backlog is not embedded in-process (it blocks the event loop); scripts/local-index.ts builds it
+  if (need.length && need.length <= maxCompute) {
     while (localBusy) await localBusy;
     const t0 = performance.now();
     const job = (async () => {
@@ -390,9 +391,9 @@ const mtime = (p: string) => (existsSync(p) ? statSync(p).mtimeMs : 0);
 async function localSemantic({ cm, cfg, user, query, viewer }: RouteContext) {
   const q = String(query.get("q") ?? "").trim().toLowerCase().slice(0, 300);
   if (!q) throw new HttpError(400, "q required");
-  const key = `${user}:${mtime(join(cfg.dataDir, "memory.db"))}:${mtime(join(cfg.dataDir, "entities.db-wal"))}:${mtime(join(cfg.dataDir, "entities.db"))}`;
+  const key = `${user}:${mtime(join(cfg.dataDir, "memory.db"))}:${mtime(join(cfg.dataDir, "entities.db-wal"))}:${mtime(join(cfg.dataDir, "entities.db"))}:${mtime(join(cfg.dataDir, `local-emb.${user}.json`))}`;
   if (localVecs?.key !== key) {
-    const ix = await localIndex(cfg, user, entityDocs(cm)), D = ix.dims, M = new Float32Array(ix.items.length * D);
+    const ix = await localIndex(cfg, user, entityDocs(cm), 300), D = ix.dims, M = new Float32Array(ix.items.length * D);
     ix.items.forEach((x, i) => { const a = new Int8Array(Buffer.from(x.v, "base64")); for (let k = 0; k < D; k++) M[i * D + k] = a[k]! / 127; });
     localVecs = { key, ids: ix.items.map((x) => x.id), M };
   }
