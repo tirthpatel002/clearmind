@@ -3,6 +3,7 @@
 import { loadConfig } from "./config.js";
 import { fmtLog, fmtMemory } from "./format.js";
 import { Clearmind } from "./store.js";
+import { fmtIngest, ingestPath } from "./ingest.js";
 
 export type Flags = Record<string, string>;
 
@@ -45,6 +46,7 @@ export const USAGE = `clearmind <command> [--dir ./.data] --user <id>   (config:
   entities [--type person] [--q text]         people, orgs, products, places linked to memories
   entity <id|name>                            one entity: fields with sources, history, linked memories
   backfill-entities                           extract and link entities for existing memories (idempotent; back up first)
+  ingest <path> [--dry-run] [--since <sha>] [--visible-to a,b]   memories from any file or folder; incremental
   serve [--port 8790] [--user id]             local web app (127.0.0.1 only unless allowPublic)
   global: --offline (no Nebius calls)`;
 
@@ -80,6 +82,13 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 async function run(cm: Clearmind, owner: string, cmd: string, rest: string[], f: Flags): Promise<number> {
   const print = (s: string) => console.log(s);
   switch (cmd) {
+    case "ingest": {
+      if (!rest[0]) { console.error("usage: ingest <path> [--dry-run] [--since <sha>]"); return 2; }
+      const dry = f["dry-run"] === "true";
+      const r = await ingestPath(cm, rest[0], { dryRun: dry, since: f.since, visibleTo: list(f["visible-to"]) });
+      print(fmtIngest(r, dry));
+      return 0;
+    }
     case "entities":
       for (const e of cm.entities.list({ type: f.type, q: f.q })) print(`${e.id}  ${(e.type ?? "-").padEnd(10)} ${String(e.memoryCount ?? 0).padStart(4)}  ${e.name}${e.aliases.length ? "  (" + e.aliases.join(", ") + ")" : ""}`);
       return 0;

@@ -219,7 +219,15 @@ export class Clearmind {
    */
   async remember(
     text: string,
-    o: { tags?: string[]; key?: string; supersedes?: string; confidence?: number; embedding?: Float32Array; visibleTo?: string[] } = {},
+    o: {
+      tags?: string[]; key?: string; supersedes?: string; confidence?: number; embedding?: Float32Array;
+      /** Extra metadata kept on the memory (e.g. provenance). */
+      extra?: Record<string, unknown>;
+      /** Principals allowed to see this memory (default: whole workspace). */
+      visibleTo?: string[];
+      /** false = always store, never fold into a near-identical memory. */
+      dedup?: boolean;
+    } = {},
   ): Promise<Memory & { confirmed?: boolean }> {
     text = String(text ?? "").trim();
     if (!text) throw new Error("memory text is empty");
@@ -235,7 +243,7 @@ export class Clearmind {
         .get(...this.w, o.key) as any;
       supersedes = row?.lesson_id;
     }
-    if (!supersedes) {
+    if (!supersedes && o.dedup !== false) {
       const active = db
         .prepare(`SELECT lesson_id id, text, created_at createdAt, status FROM lessons
           WHERE namespace=? AND user_id=? AND agent_id=? AND status='active'`)
@@ -254,7 +262,10 @@ export class Clearmind {
       createdAt: at,
       confidence: o.confidence ?? this.cfg.confidence.initial,
       ...(o.embedding ? { embedding: o.embedding } : {}),
-      extra: { tags, ...(o.key ? { key: o.key } : {}), confirmations: 0, lastConfirmedAt: at, ...(o.visibleTo ? { visibleTo: normVisibleTo(o.visibleTo) } : {}) },
+      extra: {
+        ...(o.extra ?? {}), tags, ...(o.key ? { key: o.key } : {}), confirmations: 0, lastConfirmedAt: at,
+        ...(o.visibleTo ? { visibleTo: normVisibleTo(o.visibleTo) } : {}),
+      },
     });
     if (o.visibleTo) this.writeAcl(db, "memory", l.lessonId, normVisibleTo(o.visibleTo));
     if (this.entityCfg.enabled) await this.linkEntities(l.lessonId, text);
@@ -494,6 +505,22 @@ export class Clearmind {
 
   /** Confidence of the last recall when config.retrieval enables EnhancedRetriever; otherwise null. */
   get lastRecallConfidence(): RecallConfidence | null { return this.engine.enhanced?.lastConfidence ?? null; }
+
+  /** Data directory of this store. */
+  get dataDir(): string {
+    return this.opts.dir;
+  }
+
+  /** Retire a memory without a successor (status replaced, replacedBy null); history keeps it. */
+  async retire(id: string): Promise<boolean> {
+    await this.mem.init();
+    const l = await this.mem.store.getLesson(this.scope, id);
+    if (!l || l.status !== "active") return false;
+    await this.mem.store.updateLesson(this.scope, id, { status: "replaced", replacedBy: null, updatedAt: this.nowIso() } as any);
+    this.statsCache = null;
+    if (this.entityCfg.enabled) this.entities.unlinkMemory(id);
+    return true;
+  }
 
   /** Hard-delete a memory (right to forget); needs config.retrieval.hardForget. Audited when audit is on. */
   async forget(id: string): Promise<boolean> {
