@@ -114,3 +114,6 @@ details.ins.semonly>summary::after{content:"semantic";font-size:10.5px;color:#7a
 .btn.research{display:inline-block;margin:8px 8px 0 0;background:var(--accent);color:#fff;border:0}.btn.research:hover{background:var(--accentHover)}.btn.research:disabled{opacity:.55}
 .hcard .btn.research{margin-top:6px;font-size:11.5px;padding:3px 10px}
 .bub.rsch{border:1px solid var(--accentSoft);background:#F5F9FF}.bub.rsch ul{margin:6px 0;padding-left:18px}.bub.rsch li{margin:4px 0}.bub.rsch a.src{color:var(--accentInk)}
+.rline{font-size:12px;margin-top:8px;color:var(--ink2)}.rline a{color:var(--accentInk)}.rline.limit{color:var(--butterInk);background:var(--butter);border-radius:10px;padding:6px 10px;font-weight:600}
+.rbar{height:6px;border-radius:4px;background:var(--line);margin:4px 0 10px}.rbar i{display:block;height:100%;border-radius:4px;background:var(--accent)}
+.credits.rcred{background:var(--accentSoft);color:var(--accentInk)}

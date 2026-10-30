@@ -1,4 +1,5 @@
 // Agents and access: scopes, agents, grants, revoke, the access log, and asking as an agent.
+import { lowConfidence, researchSummary } from "../research.js";
 import type { Route } from "./types.js";
 
 const opt = (v: string | null) => v ?? undefined;
@@ -51,15 +52,22 @@ export const accessRoutes: Route[] = [
   {
     method: "POST",
     path: "/api/ask",
-    handle: async ({ cm, body, useModel, viewer }) => {
+    handle: async ({ cm, body, useModel, viewer, user, cfg, research: rs }) => {
       const b = await body(20_000);
       useModel();
-      return cm.ask(String(b.question ?? ""), {
-        viewer,
-        agentId: b.agentId || undefined,
-        purpose: b.purpose || undefined,
-        tags: b.tags?.length ? b.tags : undefined,
-      });
+      const q = String(b.question ?? ""), o = { viewer, agentId: b.agentId || undefined, purpose: b.purpose || undefined, tags: b.tags?.length ? b.tags : undefined };
+      if (o.agentId && o.agentId !== "owner") return cm.ask(q, o); // agents read under their grants; no web research on their behalf
+      const ev = await cm.recallWithEvidence(q, 6, undefined, viewer);
+      const thr = ev.cosine === null ? cfg.recall.abstain.minEvidenceLexical : cfg.recall.abstain.minEvidence;
+      const low = lowConfidence(ev, { minHits: cfg.research.minHits, minEvidence: cfg.research.minEvidence ?? thr });
+      const res = await cm.ask(q, { ...o, recalled: ev });
+      if (!(res.abstained || low) || !rs) return { ...res, lowConfidence: low, research: null };
+      const r = await rs.tryAuto(cm, user, viewer, q), research = researchSummary(r);
+      if ("skipped" in r || !r.full.length) return { ...res, lowConfidence: low, research };
+      try {
+        const ev2 = await cm.recallWithEvidence(q, 6, undefined, viewer), ids = new Set(ev2.memories.map((m) => m.id));
+        return { ...(await cm.ask(q, { ...o, recalled: { ...ev2, abstained: false, memories: [...r.full.filter((m) => !ids.has(m.id)), ...ev2.memories] } })), lowConfidence: low, research };
+      } catch { return { ...res, lowConfidence: low, research }; }
     },
   },
 ];

@@ -1,5 +1,6 @@
 // Demo routes for the hackathon UI: chat with cost/credits, recall inspector, timeline, learning, privacy, numbers.
 // Everything here reads the same per-user store the app uses; nothing is mocked except the demo wallet.
+import { lowConfidence, researchSummary } from "../research.js";
 import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -140,11 +141,27 @@ async function ask(ctx: RouteContext) {
   if (emb) await emb([q]);
   const embedMs = Math.round(performance.now() - te);
   const t0 = performance.now();
-  const ev = await cm.recallWithEvidence(q, K, undefined, viewer);
+  let ev = await cm.recallWithEvidence(q, K, undefined, viewer);
   const recallMs = Math.round(performance.now() - t0);
   const before = new Map((await vrows(ctx)).map((r) => [r.lesson_id, learnRow(r, cfg)]));
   const t1 = performance.now();
-  const res = await cm.ask(q, { k: K, recalled: ev, viewer }); // single recall, reused
+  let res = await cm.ask(q, { k: K, recalled: ev, viewer }); // single recall, reused
+  // automatic research: abstained or low-confidence recall -> search the web, remember sourced facts, answer again
+  const ab0 = cfg.recall.abstain, thr0 = ev.cosine === null ? ab0.minEvidenceLexical : ab0.minEvidence;
+  const low = lowConfidence(ev, { minHits: cfg.research.minHits, minEvidence: cfg.research.minEvidence ?? thr0 });
+  let research: ReturnType<typeof researchSummary> | null = null;
+  if ((res.abstained || low) && ctx.research) {
+    const o = await ctx.research.tryAuto(cm, user, viewer, q);
+    research = researchSummary(o);
+    if (!("skipped" in o) && o.full.length) {
+      try {
+        const ev2 = await cm.recallWithEvidence(q, K, undefined, viewer), ids = new Set(ev2.memories.map((m) => m.id));
+        const merged = { ...ev2, abstained: false, memories: [...o.full.filter((m) => !ids.has(m.id)), ...ev2.memories].slice(0, K + o.full.length) };
+        const res2 = await cm.ask(q, { k: K, recalled: merged, viewer });
+        ev = merged; res = res2;
+      } catch { /* keep the first answer */ }
+    }
+  }
   const answerMs = Math.round(performance.now() - t1);
   const readerMs = (res as { usage?: { ms?: number } }).usage?.ms ?? null;
   const calls = ledgerSince(cfg, off).filter((e) => e.user === user);
@@ -174,7 +191,7 @@ async function ask(ctx: RouteContext) {
   const byId = new Map(all.map((r) => [r.lesson_id, r.text]));
   const derived = res.cited.filter((id) => ins.has(id)).map((id) => { const i = ins.get(id)!; return { id, insightId: i.id, kind: i.kind, severity: i.severity ?? null, confidence: i.confidence, status: i.status, evidence: i.evidence.map((e) => ({ id: e, text: byId.get(e) ?? "" })) }; });
   return {
-    q, answer: res.answer, abstained: !!res.abstained, reason, derived, cited: res.cited.map((id) => ({ id, text: res.memories.find((m) => m.id === id)?.text ?? "" })), shown,
+    q, answer: res.answer, abstained: !!res.abstained, lowConfidence: low, research, reason, derived, cited: res.cited.map((id) => ({ id, text: res.memories.find((m) => m.id === id)?.text ?? "" })), shown,
     evidence: ev.evidence, threshold, embedMs, recallMs, answerMs, readerMs,
     tokens: { sent: promptTokens, completion: completionTokens, fullHistory: fullTokens, memories: all.length },
     cost: {
