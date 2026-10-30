@@ -1,0 +1,24 @@
+{
+  "note": "Demo-only research plan for scripts/tavily-research.ts. Public information only. Judge questions are expanded once per judge from demo/judges.json; {name} {title} {company} are substituted.",
+  "judgeQuestions": [
+    { "topic": "background", "question": "What is publicly known about {name}'s professional work as {title} at {company}?", "query": "\"{name}\" {company} {title}", "depth": "basic", "maxResults": 5 },
+    { "topic": "linkedin", "question": "What is {name}'s public LinkedIn profile ({company})?", "query": "\"{name}\" {company}", "depth": "basic", "maxResults": 5, "includeDomains": ["linkedin.com"] },
+    { "topic": "x", "question": "What is {name}'s public X (Twitter) profile?", "query": "\"{name}\" {company}", "depth": "basic", "maxResults": 5, "includeDomains": ["x.com", "twitter.com"] },
+    { "topic": "github", "question": "What is {name}'s public GitHub profile and notable public repositories?", "query": "\"{name}\" {company}", "depth": "basic", "maxResults": 5, "includeDomains": ["github.com"] }
+  ],
+  "sponsorQuestions": [
+    { "topic": "nebius-token-factory", "question": "What is Nebius Token Factory and which open models does it serve?", "query": "Nebius Token Factory inference platform open models", "depth": "advanced", "maxResults": 5 },
+    { "topic": "nebius-token-factory-pricing", "question": "How is Nebius Token Factory priced per million tokens?", "query": "Nebius Token Factory models pricing per million tokens", "depth": "advanced", "maxResults": 5 },
+    { "topic": "nebius-ai-cloud", "question": "What is Nebius AI Cloud and what GPU infrastructure does it offer?", "query": "Nebius AI Cloud GPU infrastructure", "depth": "advanced", "maxResults": 5 },
+    { "topic": "nebius-news", "question": "What are the latest Nebius news items in 2026?", "query": "Nebius news 2026", "depth": "basic", "searchTopic": "news", "maxResults": 5 },
+    { "topic": "nemotron-on-token-factory", "question": "Which NVIDIA Nemotron models are hosted on Nebius Token Factory?", "query": "Nemotron models hosted on Nebius Token Factory", "depth": "advanced", "maxResults": 5 },
+    { "topic": "nemotron-family", "question": "What is the NVIDIA Nemotron open model family?", "query": "NVIDIA Nemotron open models family", "depth": "advanced", "maxResults": 5 },
+    { "topic": "nvidia-open-models", "question": "What open models, weights and datasets does NVIDIA publish?", "query": "NVIDIA open models open weights datasets", "depth": "basic", "maxResults": 5 },
+    { "topic": "jetson-orin-nano", "question": "What is the NVIDIA Jetson Orin Nano developer kit?", "query": "NVIDIA Jetson Orin Nano edge AI developer kit", "depth": "advanced", "maxResults": 5 },
+    { "topic": "nvidia-nim", "question": "What are NVIDIA NIM inference microservices?", "query": "NVIDIA NIM inference microservices", "depth": "advanced", "maxResults": 5 },
+    { "topic": "tavily-api", "question": "What do Tavily's search, extract and crawl APIs offer AI agents?", "query": "Tavily search extract crawl API for AI agents", "depth": "advanced", "maxResults": 5 },
+    { "topic": "tavily-in-agents", "question": "How is Tavily web search used inside LLM agents?", "query": "using Tavily web search in LLM agents", "depth": "basic", "maxResults": 5 },
+    { "topic": "hackathon-overview", "question": "What is the Nebius x NVIDIA Global AI Hackathon (tracks, prizes, dates)?", "query": "Nebius x NVIDIA Global AI Hackathon Devpost tracks prizes", "depth": "advanced", "maxResults": 5 },
+    { "topic": "hackathon-judging", "question": "How is the Nebius x NVIDIA Global AI Hackathon judged?", "query": "Nebius NVIDIA Global AI Hackathon judging criteria rules", "depth": "basic", "maxResults": 5, "includeDomains": ["devpost.com"] }
+  ]
+}

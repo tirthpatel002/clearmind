@@ -377,7 +377,7 @@ async function localSemantic({ cm, cfg, user, query }: RouteContext) {
 
 export const demoRoutes: Route[] = [
   { method: "GET", path: "/api/demo/config", handle: cfgView },
-  // written by scripts/seed-judges.ts (demo-only); absent when the dir has no web data
+  // written by the former scripts/seed-judges.ts (demo-only; replaced by scripts/tavily-research.ts + ingest); absent when the dir has no web data
   { method: "GET", path: "/api/demo/seed-info", handle: (ctx) => { const p = join(ctx.cfg.dataDir, "demo-seed.json"); return existsSync(p) ? { available: true, ...JSON.parse(readFileSync(p, "utf8")) } : { available: false }; } },
   { method: "POST", path: "/api/demo/ask", handle: ask },
   { method: "GET", path: "/api/demo/inspect", handle: inspect },

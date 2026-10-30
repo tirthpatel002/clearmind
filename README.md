@@ -82,6 +82,14 @@ corepack pnpm test                       # unit + API tests (vitest projects)
 node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/seed.ts ./data   # realistic 14-day demo data
 ```
 
+**Demo web research (Tavily, demo-only).** `scripts/tavily-research.ts` turns `demo/judges.json` (public name/title/company from Devpost) and `demo/tavily-questions.json` (judge background + public LinkedIn/X/GitHub searches, plus Nebius, Token Factory, Nemotron, Tavily and hackathon questions) into one markdown file per question under `tavily/` (`tavily/judges/<slug>/<topic>.md`, `tavily/sponsors/<topic>.md`, `tavily/INDEX.md`). Each file has YAML frontmatter (question, query, fetchedAt, tool, searchDepth, creditsUsed, sources, `visibleTo`: `[judge-<slug>]` for a judge's own files, `[workspace]` otherwise) and the full Tavily answer and results with links. It never writes memory; the ingest loads the files.
+
+```bash
+./node_modules/.bin/tsx scripts/tavily-research.ts                         # default: dry run, prints plan + credit estimate
+./node_modules/.bin/tsx scripts/tavily-research.ts --mock --out /tmp/tv    # offline MOCK files (mock: true)
+node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/tavily-research.ts --run --max-credits 300  # live; skips existing files unless --force
+```
+
 **Production** (one port: built UI + API):
 
 ```bash
