@@ -102,7 +102,12 @@ async function entityHubs(cm: RouteContext["cm"], ids: Set<string>, n: number, v
   try { list = (await cm.entityList({ limit: 5000 }, viewer)).entities; } catch { return []; }
   const out = [];
   for (const e of list) {
-    const d = (await cm.entityDetail(e.id, viewer))!; const mem = d.memoryIds.filter((m) => ids.has(m));
+    // one visibility pass for all hubs: entityList(viewer) already hid invisible entities; cut memories/fields to the visible ids here
+    // (per-entity entityDetail(id, viewer) recomputes visibility each call and made the map take seconds for non-admin viewers)
+    const full = cm.entities.detail(e.id); if (!full) continue;
+    const okF = (f: { memoryIds: string[] }) => !viewer || !f.memoryIds.length || f.memoryIds.some((m) => ids.has(m));
+    const d = { ...full, fields: Object.fromEntries(Object.entries(full.fields).filter(([, f]) => okF(f))), history: full.history.filter(okF) };
+    const mem = d.memoryIds.filter((m) => ids.has(m));
     const researched = Object.keys(d.fields).length > 0;
     if (!mem.length || (!researched && (mem.length < 2 || mem.length > Math.max(25, n * 0.4)))) continue;
     const fields = Object.fromEntries(Object.entries(d.fields).map(([k, f]) => [k, { value: f.value, sources: f.sources, fetchedAt: f.fetchedAt }]));
