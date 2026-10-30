@@ -7,6 +7,7 @@ import { memoryRoutes } from "./memories.js";
 import { stateRoutes } from "./state.js";
 import { demoRoutes } from "./demo.js";
 import { reflectRoutes } from "./demo-reflect.js";
+import { entityRoutes } from "./entities.js";
 import type { Route } from "./types.js";
 
 export type { Route, RouteContext } from "./types.js";
@@ -14,6 +15,7 @@ export type { Route, RouteContext } from "./types.js";
 export const routes: Route[] = [
   ...stateRoutes,
   ...memoryRoutes,
+  ...entityRoutes,
   ...accessRoutes,
   ...insightRoutes,
   ...graphRoutes,

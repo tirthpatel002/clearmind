@@ -29,6 +29,8 @@ import { hasNebiusKey, nebiusProvider } from "./providers/nebius.js";
 import type { ChatFn } from "./providers/provider.js";
 import { normScope } from "./scopes.js";
 import { SpendLedger } from "./spend.js";
+import { EntityStore, type EntityDetail } from "./entities.js";
+import { extractEntities } from "./extract-entities.js";
 import { cleanTitle, heuristicTitle, readTitles, titleKey, writeTitles } from "./titles.js";
 import type {
   AccessLogEntry, AskResult, Conflict, ExtractedFact, Grant, Graph, GraphEdges, ImportFormat, ImportResult,
@@ -83,6 +85,7 @@ export class Clearmind {
   private insightJob: Promise<Insights> | null = null;
   private titling = false;
   private engine: Engine;
+  private ents: EntityStore | null = null;
   private scoreModel: ScoreModel | null = null;
 
   constructor(private opts: ClearmindOptions) {
@@ -246,6 +249,7 @@ export class Clearmind {
       ...(o.embedding ? { embedding: o.embedding } : {}),
       extra: { tags, ...(o.key ? { key: o.key } : {}), confirmations: 0, lastConfirmedAt: at },
     });
+    if (this.entityCfg.enabled) await this.linkEntities(l.lessonId, text);
     return this.toMemory(l);
   }
 
@@ -280,7 +284,8 @@ export class Clearmind {
   // ----- recall -----
 
   async recall(query: string, k = 5, tags?: string[]): Promise<Memory[]> {
-    const got = (await this.mem.recall(this.scope, query, 50)).map(this.toMemory);
+    let got = (await this.mem.recall(this.scope, query, 50)).map(this.toMemory);
+    if (this.entityCfg.enabled && this.entityCfg.recallBoost > 0) got = await this.entityBoost(query, got);
     return got.filter((m) => !tags || tags.includes("*") || m.tags.some((t) => tags.includes(t))).slice(0, k);
   }
 
@@ -351,7 +356,105 @@ export class Clearmind {
     if (!resolveRetrieval(this.cfg.retrieval).hardForget) throw new Error("forget is disabled; set retrieval.hardForget");
     await this.mem.init();
     this.statsCache = null;
-    return hardForget(this.mem.store, this.scope, id, { audit: this.engine.audit ?? undefined });
+    const ok = await hardForget(this.mem.store, this.scope, id, { audit: this.engine.audit ?? undefined });
+    if (ok && this.entityCfg.enabled) this.entities.unlinkMemory(id);
+    return ok;
+  }
+
+  // ----- entities: universal (name, aliases, free-string type, open fields with provenance, free-predicate relations) -----
+
+  /** config.entities: deterministic linking on by default (no model call); the model pass and the recall boost are knobs. */
+  get entityCfg(): { enabled: boolean; llm: boolean; recallBoost: number; minConfidence: number; semanticMin: number } {
+    return { enabled: true, llm: false, recallBoost: 0.3, minConfidence: 0.5, semanticMin: 0.55, ...((this.cfg as any).entities ?? {}) };
+  }
+  get entities(): EntityStore {
+    return (this.ents ??= new EntityStore(join(this.opts.dir, "entities.db"), this.opts.ownerId, this.now));
+  }
+  /** Link a memory to the entities it names. Cost is O(words in the text) indexed lookups, independent of store size. */
+  async linkEntities(memoryId: string, text: string, o: { sources?: string[]; fetchedAt?: string } = {}): Promise<string[]> {
+    const es = this.entities, c = this.entityCfg;
+    const ex = extractEntities(text, (n) => es.resolveId(n));
+    const prov = { memoryIds: [memoryId], sources: o.sources ?? [], fetchedAt: o.fetchedAt ?? null };
+    const ids = new Map<string, string>();
+    const idFor = (name: string, type: string | null = null) => {
+      let id = es.resolveId(name);
+      if (!id && !name.includes(" ")) { const f = es.byFirstWord(name); if (f.length === 1) id = f[0]!; } // a lone first word -> the one full name
+      return id && !type ? id : es.upsert(name, type).id;
+    };
+    es.tx(() => {
+      for (const f of ex.entities) if (f.known || f.confidence >= c.minConfidence) { const id = idFor(f.name); es.link(memoryId, id, "mention", f.confidence); ids.set(f.name, id); }
+      for (const r of ex.relations) { const a = ids.get(r.from), b = ids.get(r.to); if (a && b) es.relate(a, r.predicate, b, { memoryId, sources: prov.sources, confidence: 0.6 }); }
+    });
+    if (c.llm && this.opts.chat) {
+      // optional model pass: proposes any types, fields and relations as data, each kept with this memory's provenance
+      try {
+        const r = await this.opts.chat([{ role: "system", content: 'List the named things in the text. Reply JSON {"entities":[{"name":"","type":"","fields":{}}],"relations":[{"from":"","predicate":"","to":""}]}. Names must appear verbatim; type, field names and predicates are short free strings; only facts stated in the text.' }, { role: "user", content: text.slice(0, 3000) }], { json: true, maxTokens: 500 });
+        const j = JSON.parse(r.content);
+        for (const e of (j.entities ?? []) as { name?: string; type?: string; fields?: Record<string, unknown> }[]) {
+          if (!e?.name || !text.includes(e.name)) continue;
+          const id = idFor(e.name, typeof e.type === "string" && e.type.trim() ? e.type.trim().toLowerCase() : null); es.link(memoryId, id, "mention", 0.75); ids.set(e.name, id);
+          for (const [k, v] of Object.entries(e.fields ?? {})) if (k.trim() && v !== null && v !== "") es.setField(id, k.trim(), v, prov);
+        }
+        for (const x of (j.relations ?? []) as { from?: string; predicate?: string; to?: string }[]) {
+          const a = x.from && ids.get(x.from), b = x.to && ids.get(x.to);
+          if (a && b && x.predicate) es.relate(a, String(x.predicate), b, { memoryId, sources: prov.sources, confidence: 0.75 });
+        }
+      } catch { /* the deterministic result stands */ }
+    }
+    return [...new Set(ids.values())];
+  }
+  /** Embed entity profile texts that changed since their last embedding (needs an embedder). */
+  async embedEntities(): Promise<number> {
+    if (!this.opts.embedder) return 0;
+    const todo = this.entities.embeddings().filter((x) => !x.v).map((x) => x.id);
+    for (let i = 0; i < todo.length; i += 64) {
+      const ids = todo.slice(i, i + 64), vs = await this.opts.embedder(ids.map((id) => this.entities.profileText(id)));
+      ids.forEach((id, k) => vs[k] && this.entities.setEmbedding(id, Float32Array.from(vs[k] as ArrayLike<number>)));
+    }
+    return todo.length;
+  }
+  /** Entities matching a query: names/aliases it mentions, name/alias text, field/type text, then meaning over profiles. */
+  async entitySearch(query: string, k = 5): Promise<{ entity: EntityDetail; score: number; via: "name" | "text" | "semantic" }[]> {
+    const es = this.entities;
+    if (!es.total()) return [];
+    const out = new Map<string, { id: string; score: number; via: "name" | "text" | "semantic" }>();
+    for (const f of extractEntities(query, (n) => es.resolveId(n)).entities) { const id = es.resolveId(f.name); if (id) out.set(id, { id, score: 1, via: "name" }); }
+    for (const e of es.list({ q: query, limit: 20 })) if (!out.has(e.id)) out.set(e.id, { id: e.id, score: 0.95, via: "name" });
+    for (const id of es.searchText(query, 20)) if (!out.has(id)) out.set(id, { id, score: 0.8, via: "text" });
+    if (this.opts.embedder) {
+      await this.embedEntities();
+      const [q] = await this.opts.embedder([query]);
+      if (q) for (const x of es.embeddings()) if (x.v && !out.has(x.id)) { const s = cosineSim(q, x.v); if (s >= this.entityCfg.semanticMin) out.set(x.id, { id: x.id, score: s, via: "semantic" }); }
+    }
+    return [...out.values()].sort((a, b) => b.score - a.score).slice(0, k).map((x) => ({ entity: es.detail(x.id)!, score: Number(x.score.toFixed(4)), via: x.via }));
+  }
+  /** Recall re-rank: memories linked to an entity the query names (or means) move up; missing linked ones join the pool. */
+  private async entityBoost(query: string, got: Memory[]): Promise<Memory[]> {
+    const hits = await this.entitySearch(query, 3).catch(() => []);
+    if (!hits.length) return got;
+    const linked = new Map<string, number>();
+    for (const h of hits) for (const id of h.entity.memoryIds) linked.set(id, Math.max(linked.get(id) ?? 0, h.score));
+    const have = new Set(got.map((m) => m.id));
+    for (const id of [...linked.keys()].filter((id) => !have.has(id)).slice(0, 10)) {
+      try { const l = await this.mem.current(this.scope, id); if (l.status === "active") got.push(this.toMemory(l)); } catch { /* forgotten */ }
+    }
+    const b = this.entityCfg.recallBoost, n = Math.max(1, got.length);
+    return got.map((m, i) => ({ m, s: 1 - i / n + b * (linked.get(m.id) ?? 0) })).sort((x, y) => y.s - x.s).map((x) => x.m);
+  }
+  /** Forget an entity. Without cascade its memories stay and are reported; with cascade they are forgotten too. */
+  async forgetEntity(id: string, o: { cascade?: boolean } = {}): Promise<{ entity: string; memoryIds: string[]; forgotten: string[] }> {
+    const d = this.entities.detail(id); if (!d) throw new Error("no such entity");
+    const forgotten: string[] = [];
+    if (o.cascade) for (const m of d.memoryIds) if (await this.forget(m).catch(() => false)) forgotten.push(m);
+    this.entities.remove(id);
+    return { entity: d.name, memoryIds: d.memoryIds, forgotten };
+  }
+  /** Link every active memory (idempotent). Multi-word names go first so a lone first word can resolve to them. */
+  async backfillEntities(): Promise<{ memories: number; entities: number; links: number; relations: number; ms: number }> {
+    const t0 = Date.now(), ms = await this.list(false);
+    for (const m of ms) for (const f of extractEntities(m.text).entities) if (f.name.includes(" ") && f.confidence >= this.entityCfg.minConfidence) this.entities.upsert(f.name);
+    for (const m of ms) await this.linkEntities(m.id, m.text);
+    return { memories: ms.length, entities: this.entities.total(), links: this.entities.links().length, relations: this.entities.relations().length, ms: Date.now() - t0 };
   }
 
   get features(): Features { return resolveFeatures((this.cfg as any).features); }
@@ -822,6 +925,7 @@ export class Clearmind {
   async close(): Promise<void> {
     await this.insightJob?.catch(() => {});
     this.sql?.close();
+    this.ents?.close();
     this.policy.close();
     await this.mem.close();
     await this.lessonsMem.close();

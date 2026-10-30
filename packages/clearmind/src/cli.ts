@@ -42,6 +42,9 @@ export const USAGE = `clearmind <command> [--dir ./.data] --user <id>   (config:
   conflicts | patterns                        learning memory
   lessons --agent A                           distilled agent lessons
   ask <question> [--agent A --purpose P --tags a]   answer from memory via Nemotron (policy enforced)
+  entities [--type person] [--q text]         people, orgs, products, places linked to memories
+  entity <id|name>                            one entity: fields with sources, history, linked memories
+  backfill-entities                           extract and link entities for existing memories (idempotent; back up first)
   serve [--port 8790] [--user id]             local web app (127.0.0.1 only unless allowPublic)
   global: --offline (no Nebius calls)`;
 
@@ -77,6 +80,18 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 async function run(cm: Clearmind, owner: string, cmd: string, rest: string[], f: Flags): Promise<number> {
   const print = (s: string) => console.log(s);
   switch (cmd) {
+    case "entities":
+      for (const e of cm.entities.list({ type: f.type, q: f.q })) print(`${e.id}  ${(e.type ?? "-").padEnd(10)} ${String(e.memoryCount ?? 0).padStart(4)}  ${e.name}${e.aliases.length ? "  (" + e.aliases.join(", ") + ")" : ""}`);
+      return 0;
+    case "entity": {
+      const id = rest.join(" "), e = cm.entities.detail(id) ?? (cm.entities.resolve(id) ? cm.entities.detail(cm.entities.resolve(id)!.id) : null);
+      if (!e) throw new Error(`no entity "${id}"`);
+      print(JSON.stringify(e, null, 2));
+      return 0;
+    }
+    case "backfill-entities":
+      print(JSON.stringify(await cm.backfillEntities()));
+      return 0;
     case "remember":
       print(fmtMemory(await cm.remember(rest.join(" "), { tags: list(f.tags), key: f.key })));
       return 0;

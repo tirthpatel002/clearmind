@@ -1,6 +1,9 @@
 // Public API of @clearmind/core. Node-only (SQLite, fs); browser code imports "@clearmind/core/types".
 export * from "./types.js";
 export { Clearmind } from "./store.js";
+export { EntityStore, aliasKey } from "./entities.js";
+export type { Entity, EntityDetail, EntityField, EntityLink, EntityRelation, Provenance } from "./entities.js";
+export { extractEntities } from "./extract-entities.js";
 export type { ClearmindOptions, RecallEvidence } from "./store.js";
 export { AccessPolicy } from "./policy.js";
 export type { AccessRequest, PolicyCheck } from "./policy.js";

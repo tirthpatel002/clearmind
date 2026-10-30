@@ -64,6 +64,12 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
     const url = new URL(req.url ?? "/", "http://x");
     const path = url.pathname;
     const method = req.method ?? "GET";
+    // CORS for a static app hosted elsewhere (e.g. Cloudflare): only origins listed in CLEARMIND_CORS_ORIGINS, with credentials
+    const origin = String(req.headers.origin ?? ""), allowed = (process.env.CLEARMIND_CORS_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (origin && allowed.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin); res.setHeader("Access-Control-Allow-Credentials", "true"); res.setHeader("Vary", "Origin");
+      if (method === "OPTIONS") { res.writeHead(204, { "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "content-type", "Access-Control-Max-Age": "600" }); res.end(); return; }
+    }
     try {
       if (web.serve(method, path, res)) return;
       if (method === "POST" && path === "/api/session") return await signIn(res, auth, await readJson(req, 10_000));

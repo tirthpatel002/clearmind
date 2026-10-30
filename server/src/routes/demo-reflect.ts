@@ -6,6 +6,8 @@ import type { Clearmind, Config } from "@clearmind/core";
 import { mineAll, reconcile, REFLECT_SYSTEM } from "../reflect.js";
 import type { Candidate, Insight, MemRow } from "../reflect.js";
 import type { Route, RouteContext } from "./types.js";
+import { addLedger, ledgerSince, ledgerSize, MIN_BALANCE_USD, readWallet, saveWallet } from "./demo.js";
+import { HttpError } from "../http.js";
 
 type Chat = (m: { role: string; content: string }[], o?: { json?: boolean; maxTokens?: number }) => Promise<{ content: string; usd: number; promptTokens: number; completionTokens: number }>;
 type Emb = (t: string[]) => Promise<ArrayLike<number>[]>;
@@ -49,6 +51,7 @@ const memText = (i: Insight) => `${i.status === "retired" ? "Retired insight (no
 /** Run reflect: mine, word, reconcile, and store each insight as an 'insight' memory (key insight:<sig>). */
 export async function reflect(cm: Clearmind, cfg: Config, user: string) {
   const t0 = performance.now();
+  const off = ledgerSize(cfg);
   const rows = allRows(cfg, user).filter((r) => r.status === "active").map(toMem);
   const cands = mineAll(rows);
   const o = opts(cm);
@@ -64,15 +67,35 @@ export async function reflect(cm: Clearmind, cfg: Config, user: string) {
     const m = await cm.remember(texts[k]!, { tags: ["insight", i.kind, ...(i.severity ? [`severity-${i.severity}`] : [])], key: `insight:${i.sig}`, embedding: vecs[k] ? Float32Array.from(vecs[k]!) : undefined } as never);
     i.memoryId = (m as { id: string }).id;
   }
-  const usd = worded.reduce((a, w) => a + w.usd, 0);
+  // real cost of this run: every Nebius call it made (wording + insight embeddings), from the spend ledger
+  const usd = ledgerSince(cfg, off).filter((e) => e.user === user).reduce((a, e) => a + (e.usd ?? 0), 0);
+  const w = readWallet(cfg, user);
+  w.balanceUsd = Math.max(0, w.balanceUsd - usd); w.spentUsd += usd;
+  addLedger(w, "reflect", -usd, `reflect: ${cands.length} findings, ${worded.filter((x) => x.llm).length} worded by Nemotron`);
+  saveWallet(cfg, user, w);
   const run = { at: now, usd, ms: Math.round(performance.now() - t0), mined: cands.length, llm: worded.filter((w) => w.llm).length };
   writeFileSync(insightFile(cfg, user), JSON.stringify({ insights: ins, runs: [...prev.runs, run] }, null, 1));
-  return { insights: ins, run };
+  return { insights: ins, run, wallet: w };
 }
 
 // ---------- relations graph ----------
+/** Entities worth a hub on the map: linked to 1..40% of memories (the user themself is everywhere, so not a hub), researched ones always. */
+function entityHubs(cm: RouteContext["cm"], ids: Set<string>, n: number) {
+  let list: ReturnType<RouteContext["cm"]["entities"]["list"]> = [];
+  try { list = cm.entities.list({ limit: 5000 }); } catch { return []; }
+  const out = [];
+  for (const e of list) {
+    const d = cm.entities.detail(e.id)!; const mem = d.memoryIds.filter((m) => ids.has(m));
+    const researched = Object.keys(d.fields).length > 0;
+    if (!mem.length || (!researched && (mem.length < 2 || mem.length > Math.max(25, n * 0.4)))) continue;
+    const fields = Object.fromEntries(Object.entries(d.fields).map(([k, f]) => [k, { value: f.value, sources: f.sources, fetchedAt: f.fetchedAt }]));
+    const summary = String(Object.values(d.fields).find((f) => typeof f.value === "string" && !/^https?:/.test(f.value))?.value ?? ""); // first text field, whatever it is called
+    out.push({ memoryIds: mem, score: mem.length + (researched ? 100 : 0), node: { id: e.id, name: e.name, text: `${e.name}${summary ? `: ${summary}` : ""}`, type: "entity", kind: e.type, createdAt: e.createdAt, status: "active", tags: [], aliases: e.aliases, fields, history: d.history.length, memoryCount: mem.length, confidence: null, severity: null, insightStatus: null } });
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, 80);
+}
 const NOT_ENTITY = new Set("Maya Chat Clearmind Journal Meeting Agent Email Action Calendar Profile Team Food Trip Org Breakfast Lunch Woke Around Evening Saturday Sunday Monday Tuesday Wednesday Thursday Friday Sep Oct Nov Dec IST The From Your If Install Installed Stayed Went Decided Agreed Usability Contrast Screen Target Renamed Dark Figma Insight Retired Gym Promotion".split(" "));
-export function graph(cfg: Config, user: string) {
+export function graph(cfg: Config, user: string, cm?: RouteContext["cm"]) {
   const rs = allRows(cfg, user);
   const { insights } = readInsights(cfg, user);
   const insByMem = new Map(insights.filter((i) => i.memoryId).map((i) => [i.memoryId!, i]));
@@ -80,7 +103,7 @@ export function graph(cfg: Config, user: string) {
   const nodes = rs.map((r) => {
     const tags = String(r.trigger ?? "").split(/\s+/);
     const ins = insByMem.get(r.lesson_id);
-    const type = ins ? (ins.kind === "security" ? "security" : "insight") : r.status === "replaced" ? "superseded" : tags.includes("agent-run") ? "agent-run" : secEvidence.has(r.lesson_id) ? "security-flag" : "memory";
+    const type = ins ? (ins.kind === "security" ? "security" : "insight") : r.status === "replaced" ? "superseded" : tags.includes("agent-run") ? "agent-run" : tags.includes("web") ? "web" : secEvidence.has(r.lesson_id) ? "security-flag" : "memory";
     return { id: r.lesson_id, text: r.text, type, createdAt: r.created_at, status: r.status, tags, confidence: ins?.confidence ?? null, kind: ins?.kind ?? null, severity: ins?.severity ?? null, insightStatus: ins?.status ?? null };
   });
   const ids = new Set(nodes.map((n) => n.id));
@@ -95,7 +118,19 @@ export function graph(cfg: Config, user: string) {
     const links = (JSON.parse(r.extra || "{}").learn?.links ?? {}) as Record<string, number>;
     for (const [to, w] of Object.entries(links)) if (ids.has(to) && r.lesson_id < to) edges.push({ from: r.lesson_id, to, type: "co-used", w: Number(w.toFixed(3)) });
   }
-  // same entity (person/place/project/site): proper nouns or domains shared by 2..25 memories, chained in time
+  // entity hubs from the entity store: each entity is a bigger node linked to the memories that mention it
+  const hubs = cm ? entityHubs(cm, ids, rs.length) : [];
+  if (hubs.length) {
+    for (const h of hubs) {
+      nodes.push(h.node as never);
+      for (const m of h.memoryIds) edges.push({ from: h.node.id, to: m, type: "same-entity", label: h.node.name });
+    }
+    const hubIds = new Set(hubs.map((h) => h.node.id));
+    for (const r of cm!.entities.relations()) if (hubIds.has(r.from) && hubIds.has(r.to)) edges.push({ from: r.from, to: r.to, type: "relation", label: r.predicate });
+    const counts: Record<string, number> = {}; for (const e of edges) counts[e.type] = (counts[e.type] ?? 0) + 1;
+    return { nodes, edges, counts, entities: hubs.map((h) => ({ e: h.node.name, n: h.memoryIds.length, id: h.node.id, type: h.node.kind })).sort((a, b) => b.n - a.n).slice(0, 40), entityCounts: cm!.entities.counts() };
+  }
+  // fallback without an entity store: proper nouns or domains shared by 2..25 memories, chained in time
   const ent = new Map<string, string[]>();
   for (const r of rs) {
     if (insByMem.has(r.lesson_id)) continue;
@@ -109,11 +144,15 @@ export function graph(cfg: Config, user: string) {
 }
 
 export const reflectRoutes: Route[] = [
-  { method: "POST", path: "/api/demo/reflect", handle: async ({ cm, cfg, user, useModel }: RouteContext) => { useModel(); return reflect(cm, cfg, user); } },
+  { method: "POST", path: "/api/demo/reflect", handle: async ({ cm, cfg, user, useModel }: RouteContext) => {
+    const w = readWallet(cfg, user);
+    if (w.balanceUsd < MIN_BALANCE_USD) throw new HttpError(402, `Demo credit balance $${w.balanceUsd.toFixed(4)} is too low to run reflect. Top up demo credits first.`);
+    useModel(); return reflect(cm, cfg, user);
+  } },
   { method: "GET", path: "/api/demo/insights", handle: ({ cfg, user }: RouteContext) => {
     const r = readInsights(cfg, user); const text = new Map(allRows(cfg, user).map((x) => [x.lesson_id, x.text]));
     return { ...r, insights: r.insights.map((i) => ({ ...i, evidenceText: i.evidence.map((id) => ({ id, text: text.get(id) ?? "(deleted)" })) })) };
   } },
-  { method: "GET", path: "/api/demo/graph", handle: ({ cfg, user }: RouteContext) => graph(cfg, user) },
+  { method: "GET", path: "/api/demo/graph", handle: ({ cfg, user, cm }: RouteContext) => graph(cfg, user, cm) },
 ];
 export const hasInsights = (cfg: Config, user: string) => existsSync(insightFile(cfg, user));

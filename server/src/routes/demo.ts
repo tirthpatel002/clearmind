@@ -2,6 +2,9 @@
 // Everything here reads the same per-user store the app uses; nothing is mocked except the demo wallet.
 import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
+import { createHash } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { actrActivation, betaHelp, learningConfig } from "agentmemory";
 import type { Lesson } from "agentmemory";
@@ -29,14 +32,20 @@ export const START_CREDIT_USD = 5;
 export const MIN_BALANCE_USD = 0.005;
 const K = 6;
 
-type Wallet = { balanceUsd: number; spentUsd: number; answers: number; sessions: Record<string, { usd: number; fullUsd: number; answers: number }> };
+export type LedgerEntry = { at: string; kind: "answer" | "reflect" | "topup" | "set"; usd: number; balanceUsd: number; note: string };
+type Wallet = { balanceUsd: number; spentUsd: number; answers: number; sessions: Record<string, { usd: number; fullUsd: number; answers: number }>; ledger?: LedgerEntry[] };
 
 const retr = (cfg: Config) => ({ ...RETRIEVAL_DEFAULTS, ...(cfg.retrieval ?? {}) });
 const walletFile = (cfg: Config, user: string) => join(cfg.dataDir, `demo-wallet.${user}.json`);
 export function readWallet(cfg: Config, user: string): Wallet {
   try { return JSON.parse(readFileSync(walletFile(cfg, user), "utf8")); } catch { return { balanceUsd: START_CREDIT_USD, spentUsd: 0, answers: 0, sessions: {} }; }
 }
-const saveWallet = (cfg: Config, user: string, w: Wallet) => writeFileSync(walletFile(cfg, user), JSON.stringify(w, null, 1));
+export const saveWallet = (cfg: Config, user: string, w: Wallet) => writeFileSync(walletFile(cfg, user), JSON.stringify(w, null, 1));
+/** Append to the wallet's own ledger (newest last, capped). Signed usd: charges negative, top-ups positive. */
+export function addLedger(w: Wallet, kind: LedgerEntry["kind"], usd: number, note: string) {
+  (w.ledger ??= []).push({ at: new Date().toISOString(), kind, usd, balanceUsd: w.balanceUsd, note: note.slice(0, 120) });
+  if (w.ledger.length > 300) w.ledger.splice(0, w.ledger.length - 300);
+}
 
 const auditFile = (cfg: Config) => join(cfg.dataDir, "demo-audit.jsonl");
 function audit(cfg: Config, user: string, op: string, ids: string[], detail: Record<string, unknown> = {}) {
@@ -101,12 +110,12 @@ function learnRow(r: Row, cfg: Config, now = Date.now()) {
   };
 }
 
-function ledgerSince(cfg: Config, offset: number) {
+export function ledgerSince(cfg: Config, offset: number) {
   const p = join(cfg.dataDir, "spend.jsonl");
   if (!existsSync(p)) return [];
   return readFileSync(p, "utf8").slice(offset).split("\n").filter(Boolean).map((l) => JSON.parse(l));
 }
-const ledgerSize = (cfg: Config) => { const p = join(cfg.dataDir, "spend.jsonl"); return existsSync(p) ? statSync(p).size : 0; };
+export const ledgerSize = (cfg: Config) => { const p = join(cfg.dataDir, "spend.jsonl"); return existsSync(p) ? statSync(p).size : 0; };
 const price = (cfg: Config, m: string) => cfg.nebius.prices[m] ?? { in: 1, out: 3 };
 
 async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
@@ -119,6 +128,11 @@ async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
   }
   useModel();
   const off = ledgerSize(cfg);
+  // embed the question first (memoised in the provider) so recall timing is search only
+  const emb = (cm as unknown as { opts: { embedder?: (t: string[]) => Promise<unknown> } }).opts.embedder;
+  const te = performance.now();
+  if (emb) await emb([q]);
+  const embedMs = Math.round(performance.now() - te);
   const t0 = performance.now();
   const ev = await cm.recallWithEvidence(q, K);
   const recallMs = Math.round(performance.now() - t0);
@@ -139,6 +153,7 @@ async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
   w.balanceUsd = Math.max(0, w.balanceUsd - costUsd); w.spentUsd += costUsd; w.answers++;
   const s = (w.sessions[session] ??= { usd: 0, fullUsd: 0, answers: 0 });
   s.usd += costUsd; s.fullUsd += fullUsd; s.answers++;
+  addLedger(w, "answer", -costUsd, q);
   saveWallet(cfg, user, w);
   const a = retr(cfg), ab = cfg.recall.abstain;
   const threshold = ev.cosine === null ? ab.minEvidenceLexical : ab.minEvidence;
@@ -154,7 +169,7 @@ async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
   const derived = res.cited.filter((id) => ins.has(id)).map((id) => { const i = ins.get(id)!; return { id, insightId: i.id, kind: i.kind, severity: i.severity ?? null, confidence: i.confidence, status: i.status, evidence: i.evidence.map((e) => ({ id: e, text: byId.get(e) ?? "" })) }; });
   return {
     q, answer: res.answer, abstained: !!res.abstained, reason, derived, cited: res.cited.map((id) => ({ id, text: res.memories.find((m) => m.id === id)?.text ?? "" })), shown,
-    evidence: ev.evidence, threshold, recallMs, answerMs, readerMs,
+    evidence: ev.evidence, threshold, embedMs, recallMs, answerMs, readerMs,
     tokens: { sent: promptTokens, completion: completionTokens, fullHistory: fullTokens, memories: all.length },
     cost: {
       usd: costUsd, fullUsd, savedPct: fullUsd ? Math.round((1 - costUsd / fullUsd) * 100) : null,
@@ -234,6 +249,8 @@ async function redact({ cm, cfg, user, body, useModel }: RouteContext) {
   if (!out.detections.length) return { ok: false, id, reason: "nothing sensitive detected (email, phone, card, key, password)" };
   useModel();
   const nu = await cm.update(id, out.text);
+  // a redaction edits the same event: keep its original time so time-based mining (habits, runs) is unaffected
+  { const d = new DatabaseSync(join(cfg.dataDir, "memory.db")); try { d.prepare("UPDATE lessons SET created_at=? WHERE lesson_id=?").run(r.created_at, nu.id); } finally { d.close(); } }
   const purged = retr(cfg).hardForget ? await cm.forget(id) : false;
   audit(cfg, user, "redact", [id, nu.id], { detectors: out.detections.map((d) => d.detector), originalPurged: purged });
   return { ok: true, id, newId: nu.id, text: nu.text, detections: out.detections, originalPurged: purged };
@@ -286,10 +303,85 @@ const cfgView = ({ cfg, user }: RouteContext) => {
   };
 };
 
+// ---------- local semantic index for the composer filters: nomic-embed-text-v1.5 on this machine (no LLM, no Nebius) ----------
+// Item vectors are computed once (ONNX q8, one CPU thread), Matryoshka-truncated to 256-d, int8, cached in the data dir.
+export const LOCAL_MODEL = "nomic-ai/nomic-embed-text-v1.5", LOCAL_DIMS = 256;
+const DEMO_DEPS = process.env.CLEARMIND_DEMO_DEPS ?? join(homedir(), "work/demo-deps/node_modules");
+const MODELS = process.env.CLEARMIND_DEMO_MODELS_DIR ?? join(homedir(), "work/demo-deps/models");
+let localPipe: Promise<(t: string[]) => Promise<Float32Array[]>> | null = null;
+function localEmbed() {
+  return (localPipe ??= (async () => {
+    const tf: any = await import(pathToFileURL(join(DEMO_DEPS, "@huggingface/transformers/dist/transformers.node.mjs")).href);
+    tf.env.allowRemoteModels = false; tf.env.localModelPath = MODELS + "/";
+    const fe = await tf.pipeline("feature-extraction", LOCAL_MODEL, { dtype: "q8", session_options: { intraOpNumThreads: 1, interOpNumThreads: 1 } });
+    return async (texts: string[]) => {
+      const out = await fe(texts, { pooling: "mean" });
+      const v = tf.layer_norm(out, [out.dims[1]]).slice(null, [0, LOCAL_DIMS]).normalize(2, -1);
+      return (v.tolist() as number[][]).map((r) => Float32Array.from(r));
+    };
+  })());
+}
+const toI8 = (v: Float32Array) => Buffer.from(Int8Array.from(v, (x) => Math.max(-127, Math.min(127, Math.round(x * 127)))).buffer).toString("base64");
+let localBusy: Promise<unknown> | null = null;
+async function localIndex(cfg: Config, user: string, extra: { lesson_id: string; text: string }[] = []) {
+  const file = join(cfg.dataDir, `local-emb.${user}.json`);
+  let idx: { model: string; dims: number; items: Record<string, { h: string; v: string }> } = { model: LOCAL_MODEL, dims: LOCAL_DIMS, items: {} };
+  try { const j = JSON.parse(readFileSync(file, "utf8")); if (j.model === LOCAL_MODEL && j.dims === LOCAL_DIMS) idx = j; } catch { /* new */ }
+  const all = [...rows(cfg, user, false), ...extra] as { lesson_id: string; text: string }[], h = (s: string) => createHash("sha1").update(s).digest("hex").slice(0, 12);
+  const need = all.filter((r) => idx.items[r.lesson_id]?.h !== h(r.text));
+  let ms = 0;
+  if (need.length) {
+    while (localBusy) await localBusy;
+    const t0 = performance.now();
+    const job = (async () => {
+      const emb = await localEmbed();
+      for (let i = 0; i < need.length; i += 16) {
+        const part = need.slice(i, i + 16), vs = await emb(part.map((r) => `search_document: ${r.text}`));
+        part.forEach((r, k) => (idx.items[r.lesson_id] = { h: h(r.text), v: toI8(vs[k]!) }));
+      }
+      writeFileSync(file, JSON.stringify(idx));
+    })();
+    localBusy = job; try { await job; } finally { localBusy = null; }
+    ms = Math.round(performance.now() - t0);
+  }
+  const live = new Set(all.map((r) => r.lesson_id));
+  return { model: LOCAL_MODEL, dims: LOCAL_DIMS, quant: "int8/127", prefix: { query: "search_query: ", doc: "search_document: " }, computedMs: ms, computed: need.length,
+    items: Object.entries(idx.items).filter(([id]) => live.has(id)).map(([id, x]) => ({ id, v: x.v })) };
+}
+
+// Server path for the same search: the query is embedded here with the same nomic model (kept warm in memory),
+// and compared with the cached item vectors.
+let localVecs: { key: string; ids: string[]; M: Float32Array } | null = null;
+const semLat: number[] = [];
+const pctl = (xs: number[], p: number) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.ceil((p / 100) * s.length) - 1)]!; };
+/** Entity profile texts (name, aliases, type, key fields) searched alongside memories. */
+const entityDocs = (cm: RouteContext["cm"]) => { try { return cm.entities.list({ limit: 2000 }).map((e) => ({ lesson_id: e.id, text: cm.entities.profileText(e.id) })); } catch { return []; } };
+const mtime = (p: string) => (existsSync(p) ? statSync(p).mtimeMs : 0);
+async function localSemantic({ cm, cfg, user, query }: RouteContext) {
+  const q = String(query.get("q") ?? "").trim().toLowerCase().slice(0, 300);
+  if (!q) throw new HttpError(400, "q required");
+  const key = `${user}:${mtime(join(cfg.dataDir, "memory.db"))}:${mtime(join(cfg.dataDir, "entities.db-wal"))}:${mtime(join(cfg.dataDir, "entities.db"))}`;
+  if (localVecs?.key !== key) {
+    const ix = await localIndex(cfg, user, entityDocs(cm)), D = ix.dims, M = new Float32Array(ix.items.length * D);
+    ix.items.forEach((x, i) => { const a = new Int8Array(Buffer.from(x.v, "base64")); for (let k = 0; k < D; k++) M[i * D + k] = a[k]! / 127; });
+    localVecs = { key, ids: ix.items.map((x) => x.id), M };
+  }
+  const t0 = performance.now();
+  const [v] = await (await localEmbed())([`search_query: ${q}`]);
+  const embedMs = performance.now() - t0; semLat.push(embedMs); if (semLat.length > 500) semLat.shift();
+  const { ids, M } = localVecs, D = LOCAL_DIMS, out: { id: string; cos: number }[] = [];
+  for (let i = 0; i < ids.length; i++) { let c = 0; for (let k = 0; k < D; k++) c += v![k]! * M[i * D + k]!; out.push({ id: ids[i]!, cos: Number(c.toFixed(4)) }); }
+  out.sort((a, b) => b.cos - a.cos);
+  return { q, model: LOCAL_MODEL, embedMs: Math.round(embedMs * 10) / 10, hits: out, stats: { n: semLat.length, p50: pctl(semLat, 50), p95: pctl(semLat, 95) } };
+}
+
 export const demoRoutes: Route[] = [
   { method: "GET", path: "/api/demo/config", handle: cfgView },
+  // written by scripts/seed-judges.ts (demo-only); absent when the dir has no web data
+  { method: "GET", path: "/api/demo/seed-info", handle: (ctx) => { const p = join(ctx.cfg.dataDir, "demo-seed.json"); return existsSync(p) ? { available: true, ...JSON.parse(readFileSync(p, "utf8")) } : { available: false }; } },
   { method: "POST", path: "/api/demo/ask", handle: ask },
   { method: "GET", path: "/api/demo/inspect", handle: inspect },
+  { method: "GET", path: "/api/demo/semantic", handle: localSemantic },
   { method: "GET", path: "/api/demo/timeline", handle: timeline },
   { method: "GET", path: "/api/demo/learning", handle: learning },
   { method: "GET", path: "/api/demo/privacy", handle: privacyList },
@@ -298,25 +390,29 @@ export const demoRoutes: Route[] = [
   { method: "GET", path: "/api/demo/audit", handle: auditLog },
   { method: "GET", path: "/api/demo/numbers", handle: () => numbers() },
   {
-    method: "GET", path: "/api/demo/warm", handle: async ({ cm }) => {
+    method: "GET", path: "/api/demo/warm", handle: async ({ cm, cfg, user }) => {
       const emb = (cm as unknown as { opts: { embedder?: (t: string[]) => Promise<unknown> } }).opts.embedder;
       // one round trip keeps the connection warm; the sample questions are embedded once and memoised
       const t0 = performance.now(); if (emb) await Promise.all(SAMPLE_QUESTIONS.map((q) => emb([q])));
-      return { warmed: !!emb, ms: Math.round(performance.now() - t0), questions: SAMPLE_QUESTIONS.length };
+      const ms = Math.round(performance.now() - t0);
+      // pre-warm likely filter queries in the background: sample questions, insight titles, entity names, kinds
+      // keep the local nomic model and the item vectors warm for the server semantic path
+      void localSemantic({ cfg, user, query: new URLSearchParams({ q: "warm up" }) } as RouteContext).catch(() => undefined);
+      return { warmed: !!emb, ms, questions: SAMPLE_QUESTIONS.length };
     },
   },
   { method: "GET", path: "/api/demo/wallet", handle: ({ cfg, user }) => readWallet(cfg, user) },
   {
     method: "POST", path: "/api/demo/topup", handle: async ({ cfg, user, body }) => {
       const amt = Math.min(20, Math.max(0, Number((await body(1000)).usd ?? 5)));
-      const w = readWallet(cfg, user); w.balanceUsd += amt; saveWallet(cfg, user, w);
+      const w = readWallet(cfg, user); w.balanceUsd += amt; addLedger(w, "topup", amt, "demo top-up"); saveWallet(cfg, user, w);
       audit(cfg, user, "demo-topup", [], { usd: amt });
       return w;
     },
   },
   {
     method: "POST", path: "/api/demo/set-balance", handle: async ({ cfg, user, body }) => {
-      const w = readWallet(cfg, user); w.balanceUsd = Math.max(0, Number((await body(1000)).usd ?? 0)); saveWallet(cfg, user, w); return w;
+      const w = readWallet(cfg, user); const was = w.balanceUsd; w.balanceUsd = Math.max(0, Number((await body(1000)).usd ?? 0)); addLedger(w, "set", w.balanceUsd - was, "balance set (test)"); saveWallet(cfg, user, w); return w;
     },
   },
 ];
