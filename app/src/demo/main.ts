@@ -7,21 +7,29 @@ import { mountMap, sourceOf, linksOf, type MapHandle, type Layout } from "./map.
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const usd = (n: number) => (n === 0 ? "$0" : Math.abs(n) < 0.0001 ? `$${n.toFixed(8)}` : Math.abs(n) < 0.01 ? `$${n.toFixed(5)}` : `$${n.toFixed(4)}`);
-const short = (id: string) => id.slice(-6);
-const ist = (iso: string) => new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: false, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const usd = (n: number) => (n = typeof n === "number" && Number.isFinite(n) ? n : 0, n === 0 ? "$0" : Math.abs(n) < 0.0001 ? `$${n.toFixed(8)}` : Math.abs(n) < 0.01 ? `$${n.toFixed(5)}` : `$${n.toFixed(4)}`);
+const short = (id: string) => String(id ?? "").slice(-6);
+const ist = (iso: string) => !iso || isNaN(Date.parse(iso)) ? "" : new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: false, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 /** API origin: VITE_API_BASE at build time, or <meta name="clearmind-api" content="https://api.example"> at deploy time; empty = same origin. */
 const API_BASE = (document.querySelector<HTMLMetaElement>('meta[name="clearmind-api"]')?.content || (import.meta as any).env?.VITE_API_BASE || "").replace(/\/$/, "");
 async function api(path: string, body?: unknown): Promise<any> {
   const init: RequestInit = { credentials: API_BASE ? "include" : "same-origin", ...(body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }) };
   const r = await fetch(API_BASE + path, init);
   const j = await r.json().catch(() => ({}));
+  if (r.status === 401) { reauth(); throw new Error("Your session expired. Pick who you are to continue."); }
   if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
   return j;
 }
 
+let reauthing = false;
+/** Session lost (e.g. server restart): reopen the "Continue as" picker instead of leaving the UI stuck. */
+function reauth() { if (reauthing) return; reauthing = true; void initTenancy(API_BASE, true).finally(() => { reauthing = false; }); }
+const num = (v: unknown, d = 0) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+const errBox = (what: string, e: unknown) => `<div class="bub refused">Could not load ${esc(what)}: ${esc((e as Error)?.message ?? String(e))} <a href="#" class="dlink" data-act="retry">Retry</a></div>`;
+
 /** Minimal safe markdown: input is escaped first, then only bold/italic/code/lists/line breaks are turned into tags. */
 export function md(src: string): string {
+  src = String(src ?? "");
   const inline = (t: string) => esc(t)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*(?=\S)([^*]+?)\*\*/g, "<b>$1</b>").replace(/__(?=\S)([^_]+?)__/g, "<b>$1</b>")
@@ -190,29 +198,29 @@ function renderTabs() {
 function renderWallet(w = S.cfg?.wallet) {
   if (!w) return;
   const p = $("#creditsPill");
-  p.innerHTML = `Demo credits <b>$${w.balanceUsd.toFixed(4)}</b>`;
-  p.classList.toggle("low", w.balanceUsd < (S.cfg?.minBalance ?? 0.005));
+  p.innerHTML = `Demo credits <b>$${num(w.balanceUsd).toFixed(4)}</b>`;
+  p.classList.toggle("low", num(w.balanceUsd) < (S.cfg?.minBalance ?? 0.005));
 }
 function go(t: Tab) { if (t !== S.tab) { S.tab = t; renderTabs(); void render(); } }
 
 // ---------- chat ----------
 function answerHtml(r: any) {
-  const n = new Map<string, number>(); r.cited.forEach((c: any, i: number) => n.set(c.id, i + 1));
+  const n = new Map<string, number>(); (r.cited ?? []).forEach((c: any, i: number) => n.set(c.id, i + 1));
   if (r.abstained) return `<p>I don't know. <span class="k">Nothing in memory supports an answer.</span></p>`;
   const marks: string[] = [];
-  const text = r.answer.replace(/\s*\[([0-9A-Z]{10,})\]/g, (_: string, id: string) => { marks.push(id); return `\u0000${marks.length - 1}\u0000`; });
+  const text = String(r.answer ?? "").replace(/\s*\[([0-9A-Z]{10,})\]/g, (_: string, id: string) => { marks.push(id); return `\u0000${marks.length - 1}\u0000`; });
   return md(text).replace(/\u0000(\d+)\u0000/g, (_, k) => { const id = marks[Number(k)]!; return `<sup class="mk" data-mem="${id}" title="${esc(S.texts.get(id) ?? "memory")}">${n.get(id) ?? "&middot;"}</sup>`; });
 }
 function webSources(r: any) {
   const seen = new Set<string>(), xs = (r.cited ?? []).map((c: any) => sourceOf(c.text)).filter((s: any) => s && !seen.has(s.url) && seen.add(s.url));
-  return xs.length ? `<div class="srcs"><span class="badge web">web</span> Sources: ${xs.slice(0, 6).map((s: any) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(s.title.slice(0, 48))}</a>`).join(" · ")}</div>` : "";
+  return xs.length ? `<div class="srcs"><span class="badge web">web</span> Sources: ${xs.slice(0, 6).map((s: any) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(String(s.title ?? s.url).slice(0, 48))}</a>`).join(" · ")}</div>` : "";
 }
 function chatItem(m: any, idx: number): string {
   if (m.role === "user") return `<div class="msg user"><span>${esc(m.q)}</span></div>`;
   if (m.pending) return `<div class="msg"><div class="bub spin">${m.slow ? "Not in memory yet, researching live" : "Thinking"}<span class="dots"><i></i><i></i><i></i></span></div></div>`;
   if (m.error) return `<div class="msg"><div class="bub refused">${esc(m.error)}</div></div>`;
   if (m.research) return researchItem(m.research);
-  const r = m.r;
+  const r = m.r; if (!r) return "";
   if (r.refused) return `<div class="msg"><div class="bub refused"><p>${esc(r.reason)}</p><button class="btn dark" data-act="topup">Top up $5.00 demo credits</button></div></div>`;
   return `<div class="msg"><div class="bub ${r.abstained ? "abst" : ""}"><div class="ans">${answerHtml(r)}</div>${researchLine(r.research)}${webSources(r)}${(r.abstained || r.lowConfidence) && r.research?.reason === "off" ? researchBtn(S.chat[idx - 1]?.q ?? "") : ""}<a href="#" class="dlink" data-act="inspect" data-i="${idx}">Details</a></div></div>`;
 }
@@ -224,8 +232,8 @@ const LIMIT_REASONS = new Set(["user_minute", "user_day", "workspace_day"]);
 function researchLine(x: any): string {
   if (!x) return "";
   if (x.ran || x.reused) {
-    const src = (x.sources ?? []).slice(0, 6).map((s: any) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(s.title.slice(0, 40))}</a>`).join(" · ");
-    return `<div class="rline"><span class="badge web">web</span> ${x.ran ? `Researched live with Tavily · ${x.memories.length} new ${x.memories.length === 1 ? "memory" : "memories"} saved` : `Used ${x.memories.length} memories researched earlier`}${src ? ` · ${src}` : ""}</div>`;
+    const src = (x.sources ?? []).slice(0, 6).map((s: any) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(String(s.title ?? s.url).slice(0, 40))}</a>`).join(" · ");
+    return `<div class="rline"><span class="badge web">web</span> ${x.ran ? `Researched live with Tavily · ${(x.memories ?? []).length} new ${(x.memories ?? []).length === 1 ? "memory" : "memories"} saved` : `Used ${(x.memories ?? []).length} memories researched earlier`}${src ? ` · ${src}` : ""}</div>`;
   }
   if (LIMIT_REASONS.has(x.reason)) return `<div class="rline limit">${esc(x.note)} Answering from memory only.</div>`;
   if (x.reason === "error") return `<div class="rline k">Live research failed; answering from memory only.</div>`;
@@ -279,17 +287,22 @@ function memHead() {
     ${S.mem === "map" ? `<div class="seg sm">${(["graph", "time", "type", "cluster"] as Layout[]).map((l) => `<button data-act="layout" data-l="${l}" class="${S.layout === l ? "on" : ""}">${l}</button>`).join("")}</div>` : ""}
     <span id="count" class="count"></span></div>`;
 }
+const GRAPH_CAP = 1500, LIST_PAGE = 200;
 async function loadGraph() {
-  const g = (S.graph = await api("/api/demo/graph"));
+  const g = await api(`/api/demo/graph?limit=${GRAPH_CAP}`);
+  g.nodes = (g.nodes ?? []).filter((x: any) => x && x.id).slice(0, GRAPH_CAP); g.edges = g.edges ?? [];
+  for (const x of g.nodes) { x.text = String(x.text ?? x.name ?? ""); x.createdAt = typeof x.createdAt === "string" ? x.createdAt : ""; x.type = x.type ?? "memory"; }
+  { const ids = new Set(g.nodes.map((x: any) => x.id)); g.edges = g.edges.filter((e: any) => e && ids.has(e.from) && ids.has(e.to)); }
+  S.graph = g;
   const ent = g.nodes.map(() => [] as string[]), idx = new Map<string, number>(g.nodes.map((x: any, i: number) => [x.id, i]));
-  for (const e of g.edges) if (e.type === "same-entity" && e.label) { ent[idx.get(e.from)!]!.push(e.label); ent[idx.get(e.to)!]!.push(e.label); }
-  S.hay = g.nodes.map((x: any, i: number) => `${x.text} ${x.type === "entity" ? `${(x.aliases ?? []).join(" ")} ${Object.values(x.fields ?? {}).map((f: any) => JSON.stringify(f.value)).join(" ")}` : ""} ${x.type} ${x.kind ?? ""} ${x.severity ?? ""} ${x.createdAt.slice(0, 10)} ${ist(x.createdAt)} ${[...new Set(ent[i])].join(" ")}`.toLowerCase());
+  for (const e of g.edges) if (e.type === "same-entity" && e.label) { ent[idx.get(e.from)!]?.push(e.label); ent[idx.get(e.to)!]?.push(e.label); }
+  S.hay = g.nodes.map((x: any, i: number) => `${x.text} ${x.type === "entity" ? `${(x.aliases ?? []).join(" ")} ${Object.values(x.fields ?? {}).map((f: any) => JSON.stringify(f?.value ?? "")).join(" ")}` : ""} ${x.type} ${x.kind ?? ""} ${x.severity ?? ""} ${x.createdAt.slice(0, 10)} ${ist(x.createdAt)} ${[...new Set(ent[i])].join(" ")}`.toLowerCase());
   for (const x of g.nodes) S.texts.set(x.id, x.text);
 }
 function listBody(x: any) {
   if (x.type === "entity") {
     const prof = linksOf(x.fields, esc);
-    return `<span class="k">entity${x.kind ? ` · ${esc(x.kind)}` : ""}</span> <b>${esc(x.name)}</b>${x.text.includes(": ") ? ` ${esc(x.text.slice(x.text.indexOf(": ") + 2))}` : ""} <span class="k">${x.memoryCount} memories</span>${prof ? ` <span class="pl">${prof}</span>` : ""}`;
+    return `<span class="k">entity${x.kind ? ` · ${esc(x.kind)}` : ""}</span> <b>${esc(x.name)}</b>${(x.text ?? "").includes(": ") ? ` ${esc(x.text.slice(x.text.indexOf(": ") + 2))}` : ""} <span class="k">${x.memoryCount ?? 0} memories</span>${prof ? ` <span class="pl">${prof}</span>` : ""}`;
   }
   const s = x.type === "web" ? sourceOf(x.text) : null;
   return `<span class="k">${ist(x.createdAt)}</span> ${s ? `<span class="badge web" title="Public web data gathered by the demo seeder via Tavily: sources linked">web</span> ` : ""}${esc(x.text)}${s ? ` <a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}`;
@@ -299,25 +312,32 @@ async function viewMemory() {
       <div class="legend">${LEGEND.filter((t) => t !== "web" && t !== "entity" || S.graph?.nodes.some((x: any) => x.type === t)).map((t) => `<span><i style="background:${TYPE_COL[t]}"></i>${t}</span>`).join("")}</div></div>`;
   if (S.mem === "list") {
     if (!S.graph) await loadGraph();
-    const xs = [...S.graph.nodes].sort((a: any, b: any) => (a.createdAt < b.createdAt ? 1 : -1));
-    return memHead() + `<div class="list">${xs.map((x: any) => { const i = S.graph.nodes.indexOf(x); return `<div class="li" data-id="${x.id}" data-o="${i}" data-f="${esc(S.hay[i])}" data-type="${x.type}" data-kind="${x.kind ?? ""}" data-sev="${x.severity ?? ""}"><i style="background:${TYPE_COL[x.type] ?? "#999"}"></i>${listBody(x)}</div>`; }).join("")}</div>`;
+    const order: number[] = S.graph.nodes.map((_: any, i: number) => i).sort((a: number, b: number) => (S.graph.nodes[a].createdAt < S.graph.nodes[b].createdAt ? 1 : -1));
+    const all = S.showAll || !!(S.q.memory ?? "").trim();
+    // rows past the first page are rendered only when filtering or after "Show all", so search still covers everything
+    const xs = all ? order : order.slice(0, LIST_PAGE);
+    const clip = (t: string) => (t.length > 600 ? t.slice(0, 600) + "…" : t);
+    return memHead() + `<div class="list">${xs.map((i: number) => { const x = S.graph.nodes[i]; return `<div class="li" data-id="${esc(x.id)}" data-o="${i}" data-f="${esc(S.hay[i] ?? "")}" data-type="${esc(x.type)}" data-kind="${esc(x.kind ?? "")}" data-sev="${esc(x.severity ?? "")}"><i style="background:${TYPE_COL[x.type] ?? "#999"}"></i>${listBody({ ...x, text: clip(x.text) })}</div>`; }).join("")}</div>
+      ${!all && order.length > LIST_PAGE ? `<p><a href="#" class="dlink" data-act="all">Show all ${order.length}</a> <span class="k">(filtering searches all of them)</span></p>` : ""}`;
   }
   if (S.mem === "changed") {
     const r = await api("/api/demo/timeline");
-    const ch = r.changed.filter((i: any) => i.status === "replaced");
-    return memHead() + `<div class="list">${ch.map((i: any, o: number) => `<div class="li chg" data-id="${i.id}" data-o="${o}" data-f="${esc(`${i.text} ${i.replacedByText} ${i.key ?? ""} ${i.createdAt.slice(0, 10)}`.toLowerCase())}"><span class="old"><span class="t">${esc(i.text)}</span></span><span class="arrow"> → </span><b>${esc(i.replacedByText)}</b></div>`).join("") || '<div class="k">No changed facts yet.</div>'}</div>`;
+    const ch = (r.changed ?? []).filter((i: any) => i.status === "replaced");
+    return memHead() + `<div class="list">${ch.map((i: any, o: number) => `<div class="li chg" data-id="${i.id}" data-o="${o}" data-f="${esc(`${i.text} ${i.replacedByText} ${i.key ?? ""} ${String(i.createdAt ?? "").slice(0, 10)}`.toLowerCase())}"><span class="old"><span class="t">${esc(i.text)}</span></span><span class="arrow"> → </span><b>${esc(i.replacedByText)}</b></div>`).join("") || '<div class="k">No changed facts yet.</div>'}</div>`;
   }
   const p = await api("/api/demo/privacy");
-  return memHead() + `<div class="list">${p.items.map((m: any, o: number) => `<div class="li pv" id="pv-${m.id}" data-id="${m.id}" data-o="${o}" data-f="${esc(`${m.text} ${m.sensitive.join(" ")}`.toLowerCase())}"><span class="t">${esc(m.text)}</span>${m.sensitive.length ? ` <span class="chip warn">${esc(m.sensitive.join(", "))}</span>` : ""}
-    <span class="acts">${m.sensitive.length ? `<button class="btn" data-act="redact" data-id="${m.id}">Redact</button>` : ""}<button class="btn" data-act="forget" data-id="${m.id}">Forget</button></span></div>`).join("")}</div>`;
+  return memHead() + `<div class="list">${(p.items ?? []).slice(0, (S.showAll || (S.q.memory ?? "").trim()) ? Infinity : LIST_PAGE).map((m: any, o: number) => { m.sensitive = m.sensitive ?? []; return `<div class="li pv" id="pv-${m.id}" data-id="${m.id}" data-o="${o}" data-f="${esc(`${m.text} ${m.sensitive.join(" ")}`.toLowerCase())}"><span class="t">${esc(m.text)}</span>${m.sensitive.length ? ` <span class="chip warn">${esc(m.sensitive.join(", "))}</span>` : ""}
+    <span class="acts">${m.sensitive.length ? `<button class="btn" data-act="redact" data-id="${m.id}">Redact</button>` : ""}<button class="btn" data-act="forget" data-id="${m.id}">Forget</button></span></div>`; }).join("") || '<div class="k">No memories.</div>'}</div>
+    ${!(S.showAll || (S.q.memory ?? "").trim()) && (p.items ?? []).length > LIST_PAGE ? `<p><a href="#" class="dlink" data-act="all">Show all ${p.items.length}</a></p>` : ""}`;
 }
 
 // ---------- insights ----------
 const KIND: Record<string, string> = { habit: "Habit", usage: "Usage", workflow: "Workflow", failure: "Failure lesson", security: "Security" };
 const SEV: Record<string, number> = { high: 3, medium: 2, low: 1 };
-const strength = (i: any) => (SEV[i.severity] ?? 0) * 2 + i.confidence + Math.log10(1 + i.evidence.length) * 0.3 - (i.status === "retired" ? 9 : 0);
+const strength = (i: any) => (SEV[i.severity] ?? 0) * 2 + num(i.confidence) + Math.log10(1 + (i.evidence ?? []).length) * 0.3 - (i.status === "retired" ? 9 : 0);
 function insightCard(i: any) {
-  const badge = i.severity ? `<span class="sev ${i.severity}">${i.severity}</span>` : `<span class="conf">${Math.round(i.confidence * 100)}%</span>`;
+  i.evidence = i.evidence ?? []; i.evidenceText = i.evidenceText ?? []; i.firstSeen = String(i.firstSeen ?? ""); i.lastSeen = String(i.lastSeen ?? ""); i.statement = i.statement ?? "";
+  const badge = i.severity ? `<span class="sev ${i.severity}">${i.severity}</span>` : `<span class="conf">${Math.round(num(i.confidence) * 100)}%</span>`;
   return `<details class="ins ${i.status}" data-id="${i.memoryId ?? ""}" data-o="${S.insOrder.get(i) ?? 0}" data-f="${esc(`${i.statement} ${i.kind} ${i.severity ?? ""} ${i.status}`.toLowerCase())}" data-kind="${i.kind}" data-sev="${i.severity ?? ""}" data-status="${i.status}">
     <summary><span class="kind">${KIND[i.kind] ?? i.kind}</span>${badge}<span class="st">${esc(i.statement)}</span></summary>
     <div class="ev"><div class="k">${i.evidence.length} memories · confidence ${i.confidence} · ${i.status} · ${i.firstSeen.slice(0, 10)} to ${i.lastSeen.slice(0, 10)}</div>
@@ -325,18 +345,21 @@ function insightCard(i: any) {
 }
 async function viewInsights() {
   const r = (S.insights = await api("/api/demo/insights"));
-  const xs = [...r.insights].sort((a: any, b: any) => strength(b) - strength(a)); S.insOrder = new Map(xs.map((x, k) => [x, k]));
+  const xs = [...(r?.insights ?? [])].sort((a: any, b: any) => strength(b) - strength(a)); S.insOrder = new Map(xs.map((x, k) => [x, k]));
   const filtering = !!(S.q.insights ?? "").trim(), all = S.showAll || filtering;
   return `<div class="maphead"><button class="btn dark sm" data-act="reflect" ${S.reflecting ? "disabled" : ""}>${S.reflecting ? "Reflecting..." : "Reflect now"}</button><span class="k">Derived from raw memories; every insight cites its evidence.</span><span id="count" class="count"></span></div>
     <div class="list">${xs.map((i, k) => (k < 6 || all ? insightCard(i) : insightCard(i).replace("<details ", '<details data-more="1" hidden '))).join("")}</div>
+    ${xs.length ? "" : `<p class="k">No insights yet. ${r?.skipped ? esc(r.skipped) : "Insights are derived by Reflect; on very large stores they may be skipped."}</p>`}
     ${xs.length > 6 && !all ? `<p><a href="#" class="dlink" data-act="all">Show all ${xs.length}</a></p>` : ""}
     <details class="sub"><summary>Learning from use <span class="k">(experimental)</span></summary><div id="learn">loading…</div></details>`;
 }
 async function loadLearning() {
   const el = document.getElementById("learn"); if (!el) return;
-  if (!S.cfg.learning) { el.innerHTML = '<p class="k">Learning is off in this config.</p>'; return; }
+  try {
+  if (!S.cfg?.learning) { el.innerHTML = '<p class="k">Learning is off in this config.</p>'; return; }
   const r = await api("/api/demo/learning");
-  el.innerHTML = `<table><tr><th>memory</th><th>helpfulness</th><th>used</th><th>co-use links</th></tr>${r.items.map((x: any) => `<tr><td>${esc(x.text)}</td><td class="n">${x.helpMean}</td><td class="n">${x.used}</td><td class="n">${x.links.length}</td></tr>`).join("") || '<tr><td colspan=4 class="k">No usage yet.</td></tr>'}</table>`;
+  el.innerHTML = `<table><tr><th>memory</th><th>helpfulness</th><th>used</th><th>co-use links</th></tr>${(r.items ?? []).map((x: any) => `<tr><td>${esc(x.text)}</td><td class="n">${x.helpMean ?? "–"}</td><td class="n">${x.used ?? 0}</td><td class="n">${(x.links ?? []).length}</td></tr>`).join("") || '<tr><td colspan=4 class="k">No usage yet.</td></tr>'}</table>`;
+  } catch (e) { el.innerHTML = errBox("learning", e); }
 }
 
 // ---------- inspector (slide-out) ----------
@@ -356,49 +379,52 @@ function seedLine() {
   const s = S.seed; if (!s?.available) return "";
   const usd = (x: number) => `$${(x ?? 0).toFixed(4)}`;
   return `<section><h3>How this was built</h3><p class="k">Public web data gathered by the demo seeder via Tavily: sources linked.</p>
-    <p>Tavily search (${s.tavily.searchCalls} calls, ${s.tavily.credits} credits) &rarr; ${s.enrichment.model ? `${esc(s.enrichment.model)} enrichment on Nebius Token Factory (${s.enrichment.accepted} summaries kept, ${s.enrichment.rejectedAsUnfaithful} rejected as unfaithful, ${usd(s.enrichment.usd)})` : "no model enrichment"} &rarr; ${esc(s.embeddings.model)} embeddings (${s.embeddings.memories} memories, ${s.embeddings.entities} entities, ${usd(s.embeddings.usd)}) &rarr; ${s.memories} memories, ${Object.values(s.entities ?? {}).reduce((a: number, b: any) => a + b, 0)} entities.${s.mock ? " <b>(mock run)</b>" : ""}</p>
+    <p>Tavily search (${s.tavily?.searchCalls ?? 0} calls, ${s.tavily?.credits ?? 0} credits) &rarr; ${s.enrichment?.model ? `${esc(s.enrichment.model)} enrichment on Nebius Token Factory (${s.enrichment.accepted} summaries kept, ${s.enrichment.rejectedAsUnfaithful} rejected as unfaithful, ${usd(s.enrichment.usd)})` : "no model enrichment"} &rarr; ${esc(s.embeddings?.model)} embeddings (${s.embeddings?.memories ?? 0} memories, ${s.embeddings?.entities ?? 0} entities, ${usd(s.embeddings?.usd)}) &rarr; ${s.memories} memories, ${Object.values(s.entities ?? {}).reduce((a: number, b: any) => a + b, 0)} entities.${s.mock ? " <b>(mock run)</b>" : ""}</p>
     <p class="k">The instant search box uses a small local nomic model on the server; answers and the stored vectors use Nebius.</p></section>`;
 }
 function entSection() {
   const g = S.graph; if (!g?.entityCounts) return `<p class="k">Open Memory to load entities.</p>`;
-  const c = g.entityCounts as Record<string, number>, tot = Object.values(c).reduce((a, b) => a + b, 0);
+  const c = g.entityCounts as Record<string, number>, tot = Object.values(c).reduce((a, b) => a + num(b), 0);
   return `<div class="kv"><span>total <b>${tot}</b></span>${Object.entries(c).map(([k, v]) => `<span>${esc(k)} <b>${v}</b></span>`).join("")}</div>
     <table><tr><th>top entities</th><th>type</th><th class="n">memories</th></tr>${(g.entities ?? []).slice(0, 10).map((e: any) => `<tr><td>${esc(e.e)}</td><td>${esc(e.type ?? "")}</td><td class="n">${e.n}</td></tr>`).join("")}</table>
     <p class="k">Extracted on ingest (deterministic, no model call) and linked to memories; entity matches boost their memories in recall.</p>`;
 }
 async function renderInspector() {
   const d = $("#drawer"); if (!d.classList.contains("on")) return;
+  try { await renderInspectorInner(d); } catch (e) { console.error(e); d.innerHTML = `<div class="dh"><b>Inspector</b><button class="btn sm" data-act="close">Close</button></div>${errBox("details", e)}`; }
+}
+async function renderInspectorInner(d: HTMLElement) {
   const answers = S.chat.filter((m) => m.r && !m.r.refused).map((m) => m.r);
   const sel = S.chat[S.sel]?.r ?? answers[answers.length - 1];
-  const [c, num, ins] = await Promise.all([api("/api/demo/config"), api("/api/demo/numbers").catch(() => ({ available: false })), sel ? api(`/api/demo/inspect?q=${encodeURIComponent(sel.q)}`).catch(() => null) : null, api("/api/demo/seed-info").then((x) => { S.seed = x; }).catch(() => null)]);
-  S.cfg.wallet = c.wallet; renderWallet(c.wallet);
-  const w = c.wallet, led = [...(w.ledger ?? [])].reverse().slice(0, 25);
+  const [c, nm, ins] = await Promise.all([api("/api/demo/config"), api("/api/demo/numbers").catch(() => ({ available: false })), sel?.q ? (Promise.race([api(`/api/demo/inspect?q=${encodeURIComponent(sel.q)}`), new Promise((res) => setTimeout(() => res(null), 12000))]).catch(() => null) as Promise<any>) : null, api("/api/demo/seed-info").then((x) => { S.seed = x; }).catch(() => null)]);
+  if (S.cfg) S.cfg.wallet = c.wallet; renderWallet(c.wallet);
+  const w = c.wallet ?? { balanceUsd: 0, spentUsd: 0, answers: 0, ledger: [] }, led = [...(w.ledger ?? [])].reverse().slice(0, 25);
   const fm = S.filterMs;
   const ansSec = !sel ? `<p class="k">Ask something in Chat to inspect its recall.</p>` : `
     <div class="qline">${esc(sel.q)}</div>
-    <div class="kv"><span>embed <b>${sel.embedMs ?? "–"} ms</b></span><span>recall <b>${sel.recallMs} ms</b></span><span>reader <b>${sel.readerMs ?? sel.answerMs} ms</b></span><span>total <b>${(sel.embedMs ?? 0) + sel.recallMs + sel.answerMs} ms</b></span></div>
-    <div class="kv"><span>tokens <b>${sel.tokens.sent.toLocaleString()}</b> vs ${sel.tokens.fullHistory.toLocaleString()} full</span><span>cost <b>${usd(sel.cost.usd)}</b> vs ${usd(sel.cost.fullUsd)}</span></div>
-    ${sel.abstained ? `<p class="k">Abstained: evidence ${sel.evidence.toFixed(2)} below threshold ${sel.threshold}.${sel.reason ? " " + esc(sel.reason) : ""}</p>` : ""}
-    ${sel.cited.length ? `<h4>Memories used</h4><ol>${sel.cited.map((x: any) => { const s = sourceOf(x.text); return `<li>${s ? `<span class="badge web">web</span> ` : ""}${esc(x.text)}${s ? ` <a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(new URL(s.url).hostname)}</a>` : ""}</li>`; }).join("")}</ol>` : ""}
-    ${(sel.derived ?? []).map((x: any) => `<h4>${KIND[x.kind] ?? x.kind} insight, from ${x.evidence.length} memories</h4><ul>${x.evidence.map((e: any) => `<li>${esc(e.text)}</li>`).join("")}</ul>`).join("")}
-    ${ins ? `<h4>Ranking sent to the reader</h4><table><tr><th>#</th><th>memory</th><th>score</th></tr>${ins.final.slice(0, 8).map((x: any) => `<tr class="${x.kept ? "" : "cut"}"><td class="n">${x.rank}</td><td>${esc(x.text.slice(0, 110))}</td><td class="n">${x.score?.toFixed?.(3) ?? "-"}</td></tr>`).join("")}</table>
-      <p class="k">BM25 ${ins.keyword.length} hits · vector ${ins.vector.length} hits · fused with ${esc(ins.fusion)} (k=${ins.rrfK}) · evidence ${ins.evidence}</p>` : ""}`;
-  const evalSec = !num.available ? `<p class="k">No eval report found.</p>` : `
-    <div class="kv"><span>accuracy <b>${(num.accuracy * 100).toFixed(1)}%</b> (${num.scored}/${num.total})</span><span>abstention <b>${num.abstention.absCorrect}/${num.abstention.absQuestions}</b></span></div>
-    <div class="kv"><span>tokens/question <b>${num.tokens.meanIn.toLocaleString()}</b> vs ${num.tokens.meanFull.toLocaleString()}</span><span>cost/question <b>${usd(num.cost.perQuestionUsd)}</b></span></div>
-    <p class="note">${esc(num.note)}</p><p class="k">LongMemEval-S · reader ${esc(num.reader)} · judge ${esc(num.judge)} · updated ${ist(num.updatedAt)} IST</p>`;
+    <div class="kv"><span>embed <b>${sel.embedMs ?? "–"} ms</b></span><span>recall <b>${sel.recallMs ?? "–"} ms</b></span><span>reader <b>${sel.readerMs ?? sel.answerMs ?? "–"} ms</b></span><span>total <b>${num(sel.embedMs) + num(sel.recallMs) + num(sel.answerMs)} ms</b></span></div>
+    ${sel.tokens || sel.cost ? `<div class="kv"><span>tokens <b>${num(sel.tokens?.sent).toLocaleString()}</b> vs ${num(sel.tokens?.fullHistory).toLocaleString()} full</span><span>cost <b>${usd(sel.cost?.usd)}</b> vs ${usd(sel.cost?.fullUsd)}</span></div>` : ""}
+    ${sel.abstained ? `<p class="k">Abstained: evidence ${num(sel.evidence).toFixed(2)} below threshold ${sel.threshold}.${sel.reason ? " " + esc(sel.reason) : ""}</p>` : ""}
+    ${(sel.cited ?? []).length ? `<h4>Memories used</h4><ol>${sel.cited.map((x: any) => { const s = sourceOf(x.text); return `<li>${s ? `<span class="badge web">web</span> ` : ""}${esc(x.text)}${s ? ` <a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc((() => { try { return new URL(s.url).hostname; } catch { return "source"; } })())}</a>` : ""}</li>`; }).join("")}</ol>` : ""}
+    ${(sel.derived ?? []).map((x: any) => `<h4>${KIND[x.kind] ?? x.kind} insight, from ${(x.evidence ?? []).length} memories</h4><ul>${(x.evidence ?? []).map((e: any) => `<li>${esc(e.text)}</li>`).join("")}</ul>`).join("")}
+    ${ins ? `<h4>Ranking sent to the reader</h4><table><tr><th>#</th><th>memory</th><th>score</th></tr>${(ins.final ?? []).slice(0, 8).map((x: any) => `<tr class="${x.kept ? "" : "cut"}"><td class="n">${x.rank}</td><td>${esc(String(x.text ?? "").slice(0, 110))}</td><td class="n">${x.score?.toFixed?.(3) ?? "-"}</td></tr>`).join("")}</table>
+      <p class="k">BM25 ${(ins.keyword ?? []).length} hits · vector ${(ins.vector ?? []).length} hits · fused with ${esc(ins.fusion)} (k=${ins.rrfK}) · evidence ${ins.evidence}</p>` : ""}`;
+  const evalSec = !nm?.available ? `<p class="k">No eval report found.</p>` : `
+    <div class="kv"><span>accuracy <b>${(num(nm.accuracy) * 100).toFixed(1)}%</b> (${nm.scored}/${nm.total})</span><span>abstention <b>${nm.abstention?.absCorrect ?? "–"}/${nm.abstention?.absQuestions ?? "–"}</b></span></div>
+    <div class="kv"><span>tokens/question <b>${num(nm.tokens?.meanIn).toLocaleString()}</b> vs ${num(nm.tokens?.meanFull).toLocaleString()}</span><span>cost/question <b>${usd(nm.cost?.perQuestionUsd)}</b></span></div>
+    <p class="note">${esc(nm.note)}</p><p class="k">LongMemEval-S · reader ${esc(nm.reader)} · judge ${esc(nm.judge)} · updated ${ist(nm.updatedAt)} IST</p>`;
   d.innerHTML = `<div class="dh"><b>Inspector</b><button class="btn sm" data-act="close">Close</button></div>
     <section><h3>${S.sel >= 0 ? "Selected answer" : "Last answer"}</h3>${ansSec}</section>
     <section><h3>Live latency <span class="k">(this session, ${answers.length} answers)</span></h3>
-      <table><tr><th></th><th>p50</th><th>p95</th><th>p99</th></tr>${latRow("embedding", answers.map((a) => a.embedMs).filter((x) => x != null))}${latRow("recall", answers.map((a) => a.recallMs))}${latRow("reader", answers.map((a) => a.readerMs ?? a.answerMs))}</table>
-      ${answers.length ? `<p class="k">Per answer: ${usd(answers.reduce((a, x) => a + x.cost.usd, 0) / answers.length)} and ${Math.round(answers.reduce((a, x) => a + x.tokens.sent, 0) / answers.length).toLocaleString()} tokens on average. ${answers.length < 20 ? "p99 needs more answers to mean much." : ""}</p>` : ""}
+      <table><tr><th></th><th>p50</th><th>p95</th><th>p99</th></tr>${latRow("embedding", answers.map((a) => a.embedMs).filter((x) => x != null))}${latRow("recall", answers.map((a) => a.recallMs).filter((x) => typeof x === "number"))}${latRow("reader", answers.map((a) => a.readerMs ?? a.answerMs).filter((x) => typeof x === "number"))}</table>
+      ${answers.length ? `<p class="k">Per answer: ${usd(answers.reduce((a, x) => a + num(x.cost?.usd), 0) / answers.length)} and ${Math.round(answers.reduce((a, x) => a + num(x.tokens?.sent), 0) / answers.length).toLocaleString()} tokens on average. ${answers.length < 20 ? "p99 needs more answers to mean much." : ""}</p>` : ""}
       ${fm.length ? `<p class="k">Filter: ${fm.length} keystrokes, p50 ${pct(fm, 50)!.toFixed(2)} ms, p99 ${pct(fm, 99)!.toFixed(2)} ms, max ${Math.max(...fm).toFixed(2)} ms.</p>` : ""}</section>
     <section><h3>Semantic search <span class="k">(Memory and Insights filters)</span></h3>${semSection()}</section>
     ${seedLine()}
     <section><h3>Entities</h3>${entSection()}</section>
-    <section><h3>Demo credits</h3><div class="kv"><span>balance <b>$${w.balanceUsd.toFixed(4)}</b></span><span>spent ${usd(w.spentUsd)}</span><span>${w.answers} answers</span></div>
+    <section><h3>Demo credits</h3><div class="kv"><span>balance <b>$${num(w.balanceUsd).toFixed(4)}</b></span><span>spent ${usd(w.spentUsd)}</span><span>${w.answers ?? 0} answers</span></div>
       <p><button class="btn dark sm" data-act="topup">Top up $5 (demo)</button> <button class="btn sm" data-act="drain">Set to $0.001</button></p>
-      <table><tr><th>when (IST)</th><th>what</th><th>amount</th></tr>${led.map((e: any) => `<tr><td class="n">${ist(e.at)}</td><td><b>${e.kind}</b> <span class="k">${esc(e.note)}</span></td><td class="n">${e.usd >= 0 ? "+" : "−"}${usd(Math.abs(e.usd))}</td></tr>`).join("") || '<tr><td colspan=3 class="k">No charges yet.</td></tr>'}</table>
+      <table><tr><th>when (IST)</th><th>what</th><th>amount</th></tr>${led.map((e: any) => `<tr><td class="n">${ist(e.at)}</td><td><b>${esc(e.kind)}</b> <span class="k">${esc(e.note)}</span></td><td class="n">${num(e.usd) >= 0 ? "+" : "−"}${usd(Math.abs(num(e.usd)))}</td></tr>`).join("") || '<tr><td colspan=3 class="k">No charges yet.</td></tr>'}</table>
       <p class="k">Not real money. Each answer and reflect run deducts its real Nebius cost at the configured prices.</p></section>
     <section><h3>Eval</h3>${evalSec}</section>`;
 }
@@ -421,7 +447,7 @@ async function render() {
     }
     if (t === "insights") void loadLearning();
     if (t !== "chat") { S.maskSig = "~"; applyFilter(); semSchedule(); }
-  } catch (e) { el.innerHTML = `<div class="bub refused">${esc((e as Error).message)}</div>`; }
+  } catch (e) { console.error(e); if (S.tab === t) el.innerHTML = errBox(t === "memory" ? `memory (${mv})` : t, e); }
 }
 
 async function ask(q: string) {
@@ -465,9 +491,10 @@ document.addEventListener("click", async (ev) => {
   if (act === "rcredits") return void openCredits();
   if (act === "research") { (a as HTMLButtonElement).disabled = true; return void research(a.dataset.q!, a.dataset.e || undefined); }
   if (act === "askq") { const q = a.dataset.q!; go("chat"); void ask(q); }
-  if (act === "mem") { S.mem = a.dataset.v as MemView; renderTabs(); void render(); }
+  if (act === "mem") { S.showAll = false; S.mem = a.dataset.v as MemView; renderTabs(); void render(); }
   if (act === "layout") { S.layout = a.dataset.l as Layout; S.map?.setLayout(S.layout); document.querySelectorAll("[data-act=layout]").forEach((b) => b.classList.toggle("on", b === a)); }
   if (act === "all") { S.showAll = true; void render(); }
+  if (act === "retry") { S.graph = null; void render(); void renderInspector(); }
   if (act === "reflect") {
     S.reflecting = true; void render();
     try { const r = await api("/api/demo/reflect", {}); if (r.wallet) { S.cfg.wallet = r.wallet; renderWallet(r.wallet); } S.graph = null; } catch (e) { alert((e as Error).message); }
@@ -501,9 +528,11 @@ document.addEventListener("submit", (ev) => {
 (async () => {
   await initTenancy(API_BASE);
   renderTabs();
-  S.cfg = await api("/api/demo/config");
-  $("#model").textContent = `${S.cfg.reader.split("/").pop()} on Nebius`;
-  renderWallet();
-  for (const m of (await api("/api/demo/timeline")).items) S.texts.set(m.id, m.text);
-  void render();
-})();
+  try {
+    S.cfg = await api("/api/demo/config");
+    $("#model").textContent = `${String(S.cfg?.reader ?? "").split("/").pop()} on Nebius`;
+    renderWallet();
+  } catch (e) { console.error(e); S.cfg = S.cfg ?? {}; }
+  void render(); // never wait on the timeline: it only seeds citation tooltips
+  api("/api/demo/timeline").then((t) => { for (const m of t?.items ?? []) S.texts.set(m.id, m.text); }).catch((e) => console.warn("timeline:", e));
+})().catch((e) => { console.error(e); $("#content").innerHTML = errBox("the app", e); });

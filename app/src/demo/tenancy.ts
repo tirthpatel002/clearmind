@@ -5,13 +5,13 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
 const sub = (u: U) => [u.title, u.org].filter(Boolean).join(" · ");
 
-export async function initTenancy(base: string): Promise<void> {
+export async function initTenancy(base: string, forcePicker = false): Promise<void> {
   const cred: RequestCredentials = base ? "include" : "same-origin";
   const get = async (p: string) => (await fetch(base + p, { credentials: cred })).json();
   let s: any;
   try { s = await get("/api/session"); } catch { return; }
   if (!s?.workspace) return;
-  const users: U[] = (await get("/api/workspace/users")).users;
+  const users: U[] = (await get("/api/workspace/users")).users ?? [];
   const pick = async (id: string) => {
     const r = await fetch(base + "/api/session", { method: "POST", credentials: cred, headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: id }) });
     if (r.ok) location.reload();
@@ -64,7 +64,7 @@ export async function initTenancy(base: string): Promise<void> {
     (m.querySelector<HTMLElement>(".wsu.adm") ?? q).focus();
   });
 
-  if (!s.viewer) return picker(false); // never resolves: the page reloads after a pick
+  if (!s.viewer || forcePicker) { if (!document.querySelector(".wsmodal")) void picker(false); return; } // never resolves: the page reloads after a pick
 
   const me: U = s.profile ?? { id: s.viewer.id, name: s.viewer.id, role: s.viewer.admin ? "admin" : "member" };
   const top = document.querySelector(".topbar")!;
