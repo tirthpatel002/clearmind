@@ -3,7 +3,9 @@
 import { mkdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
-import { AgentMemory, hardForget, HybridRetriever, SqliteStore } from "agentmemory";
+import { AgentMemory, applyUseFeedback, DEFAULT_MEMORY_CONFIG, hardForget, HybridRetriever, learningConfig, learnState, newModel, sgdStep, SqliteStore } from "agentmemory";
+import type { ScoreModel } from "agentmemory";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { RecallConfidence } from "agentmemory";
 import { buildEngine, retrieval as resolveRetrieval, type Engine } from "./recall/engine.js";
 import type { Embedder, EventInput, Lesson, LLM, Outcome, Scope } from "agentmemory";
@@ -81,6 +83,7 @@ export class Clearmind {
   private insightJob: Promise<Insights> | null = null;
   private titling = false;
   private engine: Engine;
+  private scoreModel: ScoreModel | null = null;
 
   constructor(private opts: ClearmindOptions) {
     if (!validUserId(opts.ownerId)) throw new Error(`invalid user id "${opts.ownerId}"`);
@@ -90,7 +93,9 @@ export class Clearmind {
     this.scope = { namespace: "clearmind", userId: opts.ownerId, agentId: "owner" };
     const minSimilarity = opts.minSimilarity ?? this.cfg.recall.minSimilarity;
     const minLexicalSimilarity = this.cfg.recall.minLexicalSimilarity;
-    this.engine = buildEngine(opts.dir, resolveRetrieval(this.cfg.retrieval), { now: this.now, embedder: opts.embedder });
+    const rv = resolveRetrieval(this.cfg.retrieval);
+    if (rv.learning) this.scoreModel = this.loadModel();
+    this.engine = buildEngine(opts.dir, rv, { now: this.now, embedder: opts.embedder, model: () => this.scoreModel });
     this.mem = new AgentMemory({
       store: this.engine.store,
       embedder: opts.embedder,
@@ -247,6 +252,11 @@ export class Clearmind {
   /** Correct a memory: writes a new version and marks the old one replaced. Tags/key carry over. */
   async update(id: string, text: string): Promise<Memory> {
     const old = await this.mem.current(this.scope, id);
+    if (this.learningOn) {
+      // a user correction is explicit evidence the old memory was wrong: one Beta failure
+      const st = learnState(old); st.f += 1;
+      await this.mem.store.updateLesson(this.scope, old.lessonId, { extra: { ...old.extra, learn: st } });
+    }
     return this.remember(text, {
       tags: (old.extra.tags as string[]) ?? [],
       key: (old.extra.key as string) ?? undefined,
@@ -258,9 +268,10 @@ export class Clearmind {
   async confirm(id: string): Promise<Memory> {
     const l = await this.mem.current(this.scope, id);
     const eff = this.toMemory(l).confidence;
+    const learn = this.learningOn ? (() => { const st = learnState(l); st.acc = [...st.acc, this.nowIso()].slice(-learningConfig(this.learnOpts).maxAccesses); return { learn: st }; })() : {};
     const u = await this.mem.store.updateLesson(this.scope, l.lessonId, {
       confidence: confirmConfidence(eff, this.cfg.confidence.gain),
-      extra: { ...l.extra, confirmations: Number(l.extra.confirmations ?? 0) + 1, lastConfirmedAt: this.nowIso() },
+      extra: { ...l.extra, ...learn, confirmations: Number(l.extra.confirmations ?? 0) + 1, lastConfirmedAt: this.nowIso() },
       updatedAt: this.nowIso(),
     });
     return this.toMemory(u);
@@ -300,6 +311,38 @@ export class Clearmind {
   }
 
   /** Resolved opt-in features (config.features; all off by default). */
+  // ----- learning from use (config.retrieval.learning) -----
+  private get learningOn(): boolean { return resolveRetrieval(this.cfg.retrieval).learning; }
+  private get learnOpts() { return resolveRetrieval(this.cfg.retrieval).learningOptions; }
+  private modelFile(): string { return join(this.opts.dir, "recall-model.json"); }
+  private loadModel(): ScoreModel {
+    const w = DEFAULT_MEMORY_CONFIG.weights; // safe prior = the hand-set weights
+    const fresh = newModel([w.similarity, w.helpfulness, w.recency, 0.1]);
+    try { if (existsSync(this.modelFile())) return { ...fresh, ...JSON.parse(readFileSync(this.modelFile(), "utf8")) }; } catch { /* corrupt model: start from the prior */ }
+    return fresh;
+  }
+  /** Current learned score model (null when learning is off). */
+  get recallModel(): ScoreModel | null { return this.scoreModel; }
+
+  /**
+   * Real-use feedback: of the memories shown for one answer, `usedIds` were used (cited). Updates each
+   * memory's Beta counts, ACT-R access history and Hebbian links, and takes one SGD step per shown memory
+   * on the score weights. No-op unless config.retrieval.learning. Call only with real usage signals.
+   */
+  async feedback(shownIds: string[], usedIds: string[]): Promise<void> {
+    if (!this.learningOn || !shownIds.length) return;
+    const lc = learningConfig(this.learnOpts);
+    const shown = (await Promise.all(shownIds.map((id) => this.mem.current(this.scope, id).catch(() => null)))).filter((l): l is Lesson => !!l);
+    const next = applyUseFeedback(shown, usedIds, this.nowIso(), lc);
+    for (const l of shown) await this.mem.store.updateLesson(this.scope, l.lessonId, { extra: { ...l.extra, learn: next.get(l.lessonId) } });
+    const feats = this.engine.enhanced?.lastFeatures;
+    if (this.scoreModel && feats) {
+      const used = new Set(usedIds);
+      for (const l of shown) { const x = feats.get(l.lessonId); if (x) this.scoreModel = sgdStep(this.scoreModel, x, used.has(l.lessonId) ? 1 : 0, lc); }
+      writeFileSync(this.modelFile(), JSON.stringify(this.scoreModel));
+    }
+  }
+
   /** Confidence of the last recall when config.retrieval enables EnhancedRetriever; otherwise null. */
   get lastRecallConfidence(): RecallConfidence | null { return this.engine.enhanced?.lastConfidence ?? null; }
 
@@ -687,6 +730,8 @@ export class Clearmind {
       extra.verified = v.supported;
       if (!v.supported && f.selfCheck.onUnsupported === "abstain") return { ...r, ...extra, answer: NO_MEMORY, cited: [], abstained: true, usage };
     }
+    // the reader cited (used) some of the shown memories: real implicit feedback for recall learning
+    if (agentId === "owner") await this.feedback(r.memories.map((m) => m.id), cited);
     return { ...r, ...extra, answer: content, cited, usage };
   }
 

@@ -2,7 +2,7 @@
 // With every option at its default, Clearmind keeps the previous SqliteStore + HybridRetriever path.
 import { join } from "node:path";
 import { AuditLog, clauseFactExtractor, EnhancedRetriever, GuardedStore, HybridRetriever, LexicalOverlapReranker, SqliteStore } from "agentmemory";
-import type { Embedder, EnhancedRetrieverOptions, FusionMode, MemoryStore, Principal, RedactionMode, Retriever } from "agentmemory";
+import type { Embedder, EnhancedRetrieverOptions, FusionMode, LearningOptions, MemoryStore, Principal, RedactionMode, Retriever, ScoreModel } from "agentmemory";
 
 export interface Retrieval {
   /** Score fusion of embedding + BM25: none (current behaviour) | weighted | rrf. */
@@ -25,6 +25,11 @@ export interface Retrieval {
   audit: boolean;
   /** Enable Clearmind.forget(id): hard delete with audit. */
   hardForget: boolean;
+  /** Maximal Marginal Relevance after fusion: top-k picked from mmrPool by lambda*rel - (1-lambda)*redundancy. */
+  mmr: boolean; mmrLambda: number; mmrPool: number;
+  /** Learn recall from real use (citations, corrections, confirmations): Beta helpfulness, ACT-R recency,
+   *  Hebbian co-use links and online score weights. Never fed by eval labels. */
+  learning: boolean; learningOptions: LearningOptions;
 }
 
 export const RETRIEVAL_DEFAULTS: Retrieval = {
@@ -34,6 +39,8 @@ export const RETRIEVAL_DEFAULTS: Retrieval = {
   newestFirst: false, supersededPenalty: 0.5, includeSuperseded: true,
   multiHop: false, multiHopTop: 3,
   principal: null, redaction: "off", audit: false, hardForget: false,
+  mmr: false, mmrLambda: 0.7, mmrPool: 50,
+  learning: false, learningOptions: {},
 };
 
 export const retrieval = (r?: Partial<Retrieval>): Retrieval => ({ ...structuredClone(RETRIEVAL_DEFAULTS), ...(r ?? {}) });
@@ -41,12 +48,12 @@ export const retrieval = (r?: Partial<Retrieval>): Retrieval => ({ ...structured
 /** Options that change recall ranking (need EnhancedRetriever). */
 export function enhancedOn(r: Retrieval): boolean {
   return r.fusion !== "none" || r.rerank !== "off" || r.factKeys || r.types.length > 0 || Object.keys(r.typeBoost).length > 0
-    || r.newestFirst || r.multiHop || r.principal !== null || r.audit;
+    || r.newestFirst || r.multiHop || r.principal !== null || r.audit || r.mmr || r.learning;
 }
 /** Options that change writes (need GuardedStore). */
 export const guardOn = (r: Retrieval): boolean => r.redaction !== "off" || r.factKeys || r.audit;
 
-export function retrieverOptions(r: Retrieval, o: { now: () => Date; embedder?: Embedder | undefined; audit?: AuditLog | undefined }): EnhancedRetrieverOptions {
+export function retrieverOptions(r: Retrieval, o: { now: () => Date; embedder?: Embedder | undefined; audit?: AuditLog | undefined; model?: () => ScoreModel | null }): EnhancedRetrieverOptions {
   return {
     now: o.now, fusion: r.fusion, fusionAlpha: r.fusionAlpha, rrfK: r.rrfK,
     useFactKeys: r.factKeys, types: r.types.length ? r.types : undefined, typeBoost: Object.keys(r.typeBoost).length ? r.typeBoost : undefined,
@@ -54,12 +61,15 @@ export function retrieverOptions(r: Retrieval, o: { now: () => Date; embedder?: 
     principal: r.principal ?? undefined,
     reranker: r.rerank === "lexical" ? new LexicalOverlapReranker(r.rerankWeight) : undefined, rerankPool: r.rerankPool,
     multiHop: r.multiHop, multiHopTop: r.multiHopTop, embedder: o.embedder, audit: o.audit,
+    noneSimilarity: "hybrid", // keyword search is never dropped when a flag switches on EnhancedRetriever
+    mmr: r.mmr, mmrLambda: r.mmrLambda, mmrPool: r.mmrPool,
+    learning: r.learning ? { config: r.learningOptions, model: o.model } : undefined,
   };
 }
 
 export interface Engine { store: MemoryStore; retriever: Retriever; audit: AuditLog | null; enhanced: EnhancedRetriever | null }
 
-export function buildEngine(dir: string, r: Retrieval, o: { now: () => Date; embedder?: Embedder | undefined }): Engine {
+export function buildEngine(dir: string, r: Retrieval, o: { now: () => Date; embedder?: Embedder | undefined; model?: () => ScoreModel | null }): Engine {
   const base = new SqliteStore({ path: join(dir, "memory.db") });
   const audit = r.audit ? new AuditLog(join(dir, "audit.jsonl"), o.now) : null;
   const store: MemoryStore = guardOn(r)
