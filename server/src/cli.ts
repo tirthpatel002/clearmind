@@ -8,6 +8,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
   if (pos[0] !== "serve") return runCli(argv);
   await serve({
     offline: f.offline === "true",
+    accessTokenFile: f["access-token-file"],
     overrides: {
       dataDir: f.dir,
       port: f.port ? Number(f.port) : undefined,

@@ -2,8 +2,10 @@
 import { createServer } from "node:http";
 import { isLoopback, loadConfig } from "@clearmind/core";
 import { createApp } from "./app.js";
+import { accessGate, resolveAccessToken } from "./gate.js";
 
 export { createApp } from "./app.js";
+export { accessGate, resolveAccessToken } from "./gate.js";
 export type { App, AppOptions } from "./app.js";
 export { LocalAuth, RateLimiter } from "./auth.js";
 export type { AuthProvider } from "./auth.js";
@@ -15,18 +17,21 @@ export interface ServeOptions {
   offline?: boolean;
   overrides?: Record<string, unknown>;
   appDir?: string;
+  /** File holding the demo access token (env CLEARMIND_ACCESS_TOKEN wins). Unset: gate off. */
+  accessTokenFile?: string;
 }
 
 /** Start the web server and keep running. */
 export async function serve(o: ServeOptions = {}): Promise<void> {
   const cfg = loadConfig({ overrides: o.overrides });
   const app = createApp(cfg, { offline: o.offline, appDir: o.appDir });
+  const gate = accessGate(resolveAccessToken({ file: o.accessTokenFile }));
   const srv = createServer((req, res) => {
-    void app.handle(req, res);
+    if (gate(req, res)) void app.handle(req, res);
   });
   await new Promise<void>((ok) => srv.listen(cfg.port, cfg.host, ok));
   const exposure = isLoopback(cfg.host) ? ", local only" : ", EXPOSED: allowPublic is set";
   const who = cfg.auth.workspaceUsers ? `, workspace sign-in (${cfg.auth.workspaceUsers})` : cfg.auth.defaultUser ? `, default user ${cfg.auth.defaultUser}` : ", sign-in required";
-  console.log(`clearmind web on http://${cfg.host}:${cfg.port} (data ${cfg.dataDir}${exposure}${who})`);
+  console.log(`clearmind web on http://${cfg.host}:${cfg.port} (data ${cfg.dataDir}${exposure}${who}${resolveAccessToken({ file: o.accessTokenFile }) ? ", access token gate ON" : ""})`);
   await new Promise(() => {});
 }
