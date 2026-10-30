@@ -64,7 +64,7 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
   const owner = cfg.auth.defaultUser ?? "workspace";
   const users = new Map<string, Clearmind>();
   const researcher = new Researcher(o.research, cfg.research);
-  const research = researchRoutes(researcher, o.workspaceUserCount ?? (() => { const us = (cfg as any).workspace?.users; return Array.isArray(us) ? us.filter((x: any) => (x?.id ?? x) !== "guest").length : null; }));
+  const research = researchRoutes(researcher, o.workspaceUserCount ?? (() => (ws ? ws.list().filter((u) => u.role !== "guest").length : null)));
   const reqLimit = new RateLimiter(cfg.rateLimit.requestsPerMin);
   const modelLimit = new RateLimiter(cfg.rateLimit.modelCallsPerMin);
 
