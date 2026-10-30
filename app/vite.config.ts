@@ -12,6 +12,9 @@ const tfDeps = process.env.TRANSFORMIUM_DEPS ?? resolve(homedir(), "work/transfo
 
 export default defineConfig({
   resolve: { alias: { "@transformium/core/engine": resolve(tf, "packages/core/src/engine/index.ts"), "zod-to-json-schema": resolve(tfDeps, "zod-to-json-schema"), zod: resolve(tfDeps, "zod") } },
+  // Relative asset paths, so the same build works at "/" (served by the API server) and under a sub-path such as
+  // projects.tirthkpatel.com/clearmind/ (static host). CLEARMIND_BASE overrides, e.g. "/clearmind/".
+  base: process.env.CLEARMIND_BASE ?? "./",
   build: { outDir: "dist", emptyOutDir: true, target: "es2022" },
   server: {
     host: "127.0.0.1",

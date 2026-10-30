@@ -11,13 +11,14 @@
       <header class="topbar">
         <div class="brand">clearmind<i></i></div>
         <div class="model" id="model"></div>
-        <button class="credits" id="creditsPill" data-tab="credits" title="Demo credits (not real money)"></button>
+        <button class="insp" data-act="inspector" title="Recall details, latency, credits and eval">Inspector</button>
+        <button class="credits" id="creditsPill" data-act="inspector" title="Demo credits (not real money). Opens the Inspector."></button>
       </header>
       <main class="canvas">
         <nav class="notch" id="tabs" role="tablist"></nav>
         <section class="content" id="content"></section>
         <form class="dock" id="composer" autocomplete="off">
-          <input id="q" placeholder="Ask your memory... e.g. What time is my standup?" aria-label="Ask" />
+          <input id="q" placeholder="Ask your memory..." aria-label="Ask" />
           <button class="send" type="submit" aria-label="Send">&#10148;</button>
         </form>
       </main>
