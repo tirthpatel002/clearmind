@@ -3,11 +3,12 @@
 import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { actrActivation, betaHelp, learningConfig, scanAndRedact } from "agentmemory";
+import { actrActivation, betaHelp, learningConfig } from "agentmemory";
 import type { Lesson } from "agentmemory";
 import { cosineSim, RETRIEVAL_DEFAULTS } from "@clearmind/core";
 import type { Clearmind, Config } from "@clearmind/core";
 import { HttpError } from "../http.js";
+import { redactText } from "../redact.js";
 import type { Route, RouteContext } from "./types.js";
 
 /** Demo wallet: starting credit (USD), stored in <dataDir>/demo-wallet.json. Not real money. */
@@ -212,7 +213,7 @@ async function redact({ cm, cfg, user, body, useModel }: RouteContext) {
   const id = String((await body(1000)).id ?? "");
   const r = rows(cfg, user).find((x) => x.lesson_id === id);
   if (!r) throw new HttpError(404, "memory not found");
-  const out = scanAndRedact(r.text, "redact");
+  const out = redactText(r.text);
   if (!out.detections.length) return { ok: false, id, reason: "nothing sensitive detected (email, phone, card, key, password)" };
   useModel();
   const nu = await cm.update(id, out.text);
@@ -229,7 +230,7 @@ function auditLog({ cfg, user }: RouteContext) {
 }
 
 function privacyList({ cfg, user }: RouteContext) {
-  return { hardForget: retr(cfg).hardForget, redaction: retr(cfg).redaction, items: rows(cfg, user).slice(-60).reverse().map((r) => ({ id: r.lesson_id, text: r.text, sensitive: scanAndRedact(r.text).detections.map((d) => d.detector) })) };
+  return { hardForget: retr(cfg).hardForget, redaction: retr(cfg).redaction, items: rows(cfg, user).slice(-60).reverse().map((r) => ({ id: r.lesson_id, text: r.text, sensitive: redactText(r.text).detections.map((d) => d.detector) })) };
 }
 
 /** LongMemEval numbers from the newest eval run (CLEARMIND_DEMO_EVAL_DIR: per_question.jsonl + REPORT.md). */
@@ -274,6 +275,13 @@ export const demoRoutes: Route[] = [
   { method: "POST", path: "/api/demo/redact", handle: redact },
   { method: "GET", path: "/api/demo/audit", handle: auditLog },
   { method: "GET", path: "/api/demo/numbers", handle: () => numbers() },
+  {
+    method: "GET", path: "/api/demo/warm", handle: async ({ cm }) => {
+      const emb = (cm as unknown as { opts: { embedder?: (t: string[]) => Promise<unknown> } }).opts.embedder;
+      const t0 = performance.now(); if (emb) await emb(["warm up"]);
+      return { warmed: !!emb, ms: Math.round(performance.now() - t0) };
+    },
+  },
   { method: "GET", path: "/api/demo/wallet", handle: ({ cfg, user }) => readWallet(cfg, user) },
   {
     method: "POST", path: "/api/demo/topup", handle: async ({ cfg, user, body }) => {
