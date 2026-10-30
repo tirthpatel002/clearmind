@@ -230,7 +230,12 @@ function auditLog({ cfg, user }: RouteContext) {
 }
 
 function privacyList({ cfg, user }: RouteContext) {
-  return { hardForget: retr(cfg).hardForget, redaction: retr(cfg).redaction, items: rows(cfg, user).slice(-60).reverse().map((r) => ({ id: r.lesson_id, text: r.text, sensitive: redactText(r.text).detections.map((d) => d.detector) })) };
+  return { hardForget: retr(cfg).hardForget, redaction: retr(cfg).redaction, items: (() => {
+    // Sensitive memories first (all of them), then the newest others, capped at 60 rows.
+    const all = rows(cfg, user).reverse().map((r) => ({ id: r.lesson_id, text: r.text, sensitive: redactText(r.text).detections.map((d) => d.detector) }));
+    const hot = all.filter((m) => m.sensitive.length);
+    return [...hot, ...all.filter((m) => !m.sensitive.length).slice(0, Math.max(0, 60 - hot.length))];
+  })() };
 }
 
 /** LongMemEval numbers from the newest eval run (CLEARMIND_DEMO_EVAL_DIR: per_question.jsonl + REPORT.md). */
