@@ -1,4 +1,4 @@
-// Serves the built web app (app/dist): index.html at "/" and hashed files under /assets/.
+// Serves the built web app (app/dist): index.html at "/", hashed files under /assets/, and the root app icons.
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,9 @@ const TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+/** App icons Vite copies from app/public to the dist root. */
+const ROOT_ICONS = /^\/(favicon\.ico|icon-\d+\.png)$/;
+
 export class StaticApp {
   private index: string | null = null;
 
@@ -31,7 +34,7 @@ export class StaticApp {
       this.sendIndex(res);
       return true;
     }
-    if (path.startsWith("/assets/")) {
+    if (path.startsWith("/assets/") || ROOT_ICONS.test(path)) {
       this.sendAsset(path, res);
       return true;
     }
@@ -52,7 +55,7 @@ export class StaticApp {
   private sendAsset(path: string, res: ServerResponse): void {
     const rel = normalize(decodeURIComponent(path)).replace(/^[/\\]+/, "");
     const file = join(this.dir, rel);
-    if (!rel.startsWith("assets") || !file.startsWith(this.dir) || !existsSync(file)) {
+    if (!(rel.startsWith("assets") || ROOT_ICONS.test("/" + rel)) || !file.startsWith(this.dir) || !existsSync(file)) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("not found");
       return;
