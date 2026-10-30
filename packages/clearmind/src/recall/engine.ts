@@ -1,8 +1,9 @@
 // Opt-in agentmemory recall engine: maps config.retrieval onto EnhancedRetriever + GuardedStore.
 // With every option at its default, Clearmind keeps the previous SqliteStore + HybridRetriever path.
+import { statSync } from "node:fs";
 import { join } from "node:path";
 import { AuditLog, clauseFactExtractor, EnhancedRetriever, GuardedStore, HybridRetriever, LexicalOverlapReranker, SqliteStore } from "agentmemory";
-import type { Embedder, EnhancedRetrieverOptions, FusionMode, LearningOptions, MemoryStore, Principal, RedactionMode, Retriever, ScoreModel } from "agentmemory";
+import type { Embedder, EnhancedRetrieverOptions, Lesson, FusionMode, LearningOptions, MemoryStore, Principal, RedactionMode, Retriever, ScoreModel } from "agentmemory";
 
 export interface Retrieval {
   /** Score fusion of embedding + BM25: none (current behaviour) | weighted | rrf. */
@@ -76,5 +77,30 @@ export function buildEngine(dir: string, r: Retrieval, o: { now: () => Date; emb
     ? new GuardedStore(base, { redaction: r.redaction, factExtractor: r.factKeys ? clauseFactExtractor : undefined, embedder: r.factKeys ? o.embedder : undefined, audit: audit ?? undefined })
     : base;
   const enhanced = enhancedOn(r) ? new EnhancedRetriever(retrieverOptions(r, { ...o, audit: audit ?? undefined })) : null;
-  return { store, retriever: enhanced ?? new HybridRetriever({ now: o.now }), audit, enhanced };
+  return { store: cachedLessons(store, join(dir, "memory.db")), retriever: enhanced ?? new HybridRetriever({ now: o.now }), audit, enhanced };
+}
+
+/**
+ * Read-through cache for listLessons: every recall loads all active lessons (5k rows with 4096-d vectors took
+ * ~370 ms). Entries are dropped on any write through this store and whenever memory.db or its WAL changes on disk
+ * (writes from another process, e.g. a CLI ingest). Callers get a fresh array; lessons are shared, read-only.
+ */
+export function cachedLessons(store: MemoryStore, dbPath: string): MemoryStore {
+  const cache = new Map<string, Lesson[]>();
+  const stamp = () => { let o = ""; for (const f of [dbPath, dbPath + "-wal"]) { try { const st = statSync(f); o += st.mtimeMs + ":" + st.size + ";"; } catch { o += "-;"; } } return o; };
+  return new Proxy(store, {
+    get(t, k, r) {
+      const v = Reflect.get(t, k, r);
+      if (typeof v !== "function") return v;
+      if (k === "listLessons") return async (scope: unknown, q?: unknown) => {
+        const key = JSON.stringify([scope, q ?? null]) + "@" + stamp();
+        const hit = cache.get(key); if (hit) return hit.slice();
+        const got: Lesson[] = await v.call(t, scope, q);
+        if (cache.size > 32) cache.clear();
+        cache.set(key, got); return got.slice();
+      };
+      if (/^(insert|update|delete|upsert|transaction|close|init)/.test(String(k))) return (...a: unknown[]) => { cache.clear(); return v.apply(t, a); };
+      return v.bind(t);
+    },
+  });
 }

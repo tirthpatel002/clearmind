@@ -1,6 +1,6 @@
 // Clearmind: a memory layer you can see, correct and trust. Built on agentmemory.
 // One instance serves one user; every query is scoped to that user.
-import { mkdirSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { AgentMemory, applyUseFeedback, DEFAULT_MEMORY_CONFIG, hardForget, HybridRetriever, learningConfig, learnState, newModel, sgdStep, SqliteStore } from "agentmemory";
@@ -73,6 +73,9 @@ const INSIGHTS_MAX_FACTS = 3000;
 /** Max model calls per titling pass. */
 const MAX_TITLE_CALLS = 20;
 const AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/** Entities linked to more memories than this are hubs and do not re-rank recall. */
+export const ENTITY_HUB_MAX = 25;
 
 export class Clearmind {
   readonly mem: AgentMemory;
@@ -366,6 +369,23 @@ export class Clearmind {
    */
   async visibleEntityIds(viewer?: Viewer): Promise<Set<string> | null> {
     if (fullAccess(viewer)) return null;
+    // cached per principal set until any store file changes (one recall used to rebuild this 4-5 times, ~270 ms each)
+    const ck = principalsOf(viewer!).slice().sort().join("|") + "@" + this.dataStamp();
+    const hit = this.visEntCache.get(ck); if (hit) return hit;
+    const res = await this.visibleEntityIdsUncached(viewer!);
+    if (this.visEntCache.size > 64) this.visEntCache.clear();
+    this.visEntCache.set(ck, res); return res;
+  }
+  private visEntCache = new Map<string, Set<string>>();
+  /** Cheap change stamp over the store's sqlite files (db + wal mtimes and sizes). */
+  private dataStamp(): string {
+    let o = "";
+    for (const f of ["memory.db", "memory.db-wal", "entities.db", "entities.db-wal", "policy.db", "policy.db-wal"]) {
+      try { const st = statSync(join(this.opts.dir, f)); o += st.mtimeMs + ":" + st.size + ";"; } catch { o += "-;"; }
+    }
+    return o;
+  }
+  private async visibleEntityIdsUncached(viewer: Viewer): Promise<Set<string>> {
     // Same rule as before (explicit entity acl wins; else visible when a visible memory mentions it), evaluated in JS
     // from the visible memory ids: the correlated SQL form took ~30 s per call on a 5k-memory / 5k-entity store.
     const db = await this.entDb(), pr = new Set(principalsOf(viewer!)), vm = await this.visibleMemoryIds(viewer);
@@ -595,7 +615,8 @@ export class Clearmind {
   /** Embed entity profile texts that changed since their last embedding (needs an embedder). */
   async embedEntities(): Promise<number> {
     if (!this.opts.embedder) return 0;
-    const todo = this.entities.embeddings().filter((x) => !x.v).map((x) => x.id);
+    const todo = this.entities.unembeddedIds(); // SQL-side check: loading every vector just to find gaps took ~300 ms
+    if (todo.length) this.entVecs = undefined;
     for (let i = 0; i < todo.length; i += 64) {
       const ids = todo.slice(i, i + 64), vs = await this.opts.embedder(ids.map((id) => this.entities.profileText(id)));
       ids.forEach((id, k) => vs[k] && this.entities.setEmbedding(id, Float32Array.from(vs[k] as ArrayLike<number>)));
@@ -614,7 +635,9 @@ export class Clearmind {
     if (this.opts.embedder) {
       await this.embedEntities();
       const [q] = await this.opts.embedder([query]);
-      if (q) for (const x of es.embeddings()) if (x.v && !out.has(x.id)) { const s = cosineSim(q, x.v); if (s >= this.entityCfg.semanticMin) out.set(x.id, { id: x.id, score: s, via: "semantic" }); }
+      const n = es.total();
+      if (!this.entVecs || this.entVecs.n !== n) this.entVecs = { n, rows: es.embeddings() };
+      if (q) for (const x of this.entVecs.rows) if (x.v && !out.has(x.id)) { const s = cosineSim(q, x.v); if (s >= this.entityCfg.semanticMin) out.set(x.id, { id: x.id, score: s, via: "semantic" }); }
     }
     const ranked = [...out.values()].filter((x) => !vis || vis.has(x.id)).sort((a, b) => b.score - a.score).slice(0, k);
     const res = [];
@@ -622,8 +645,11 @@ export class Clearmind {
     return res;
   }
   /** Recall re-rank: memories linked to an entity the query names (or means) move up; missing linked ones join the pool. */
+  private entVecs?: { n: number; rows: { id: string; v: Float32Array | null }[] };
   private async entityBoost(query: string, got: Memory[], viewer?: Viewer): Promise<Memory[]> {
-    const hits = await this.entitySearch(query, 3, viewer).catch(() => []);
+    // hub entities (linked to many memories, e.g. a word repeated across one long document) are not specific: boosting them
+    // lifts dozens of loosely related chunks over the engine's best match, so they do not re-rank
+    const hits = (await this.entitySearch(query, 3, viewer).catch(() => [])).filter((h) => h.entity.memoryIds.length <= ENTITY_HUB_MAX);
     if (!hits.length) return got;
     const linked = new Map<string, number>();
     for (const h of hits) for (const id of h.entity.memoryIds) linked.set(id, Math.max(linked.get(id) ?? 0, h.score));

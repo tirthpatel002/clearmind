@@ -158,6 +158,7 @@ export class EntityStore {
     return `${d.name}${d.aliases.length ? ` (also ${d.aliases.join(", ")})` : ""}${d.type ? `, ${d.type}` : ""}. ${f}`.slice(0, 1500);
   }
   setEmbedding(id: string, v: Float32Array) { this.q(`UPDATE entities SET embedding=? WHERE id=?`).run(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), id); }
+  unembeddedIds(): string[] { return (this.q(`SELECT id FROM entities WHERE user_id=? AND embedding IS NULL`).all(this.user) as any[]).map((r) => r.id as string); }
   embeddings(): { id: string; v: Float32Array | null }[] {
     return (this.q(`SELECT id, embedding FROM entities WHERE user_id=?`).all(this.user) as any[]).map((r) => ({ id: r.id, v: r.embedding ? new Float32Array(Uint8Array.from(r.embedding).buffer) : null }));
   }
