@@ -55,7 +55,8 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
   const auth = o.auth ?? new LocalAuth({ defaultUser: cfg.auth.defaultUser });
   const web = new StaticApp(o.appDir);
   const resolveViewer = o.resolveViewer ?? defaultViewer(cfg);
-  const ws = o.workspace ?? (cfg.auth.workspaceUsers ? Workspace.load(cfg.auth.workspaceUsers) : null);
+  const ws = o.workspace ?? (cfg.auth.workspaceUsers ? Workspace.load(cfg.auth.workspaceUsers, join(dir, "workspace-users.added.json")) : null);
+  const addLimit = new RateLimiter(5), addAll = new RateLimiter(30);
   /** In a workspace everyone reads the owner's store; the viewer decides what they see. */
   const owner = cfg.auth.defaultUser ?? "workspace";
   const users = new Map<string, Clearmind>();
@@ -101,6 +102,13 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
       const sid = ws ? (auth.session ? auth.session(req) : auth.identify(req)) : auth.identify(req);
       req.viewer = ws ? ws.viewer(sid) : sid ? { id: sid, admin: true } : undefined;
       if (method === "GET" && path === "/api/workspace/users") return ws ? sendJson(res, 200, { users: ws.list() }) : sendJson(res, 404, { error: "no workspace users configured" });
+      if (method === "POST" && path === "/api/workspace/users") {
+        if (!ws?.canAdd) return sendJson(res, 404, { error: "no workspace users configured" });
+        if (req.headers["content-type"]?.split(";")[0] !== "application/json") throw new HttpError(415, "use application/json");
+        if (!addLimit.take("add:" + (req.socket.remoteAddress ?? "")) || !addAll.take("all")) throw new HttpError(429, "too many new users, try again in a minute");
+        const u = ws.add(((await readJson(req, 2_000)) as { name?: unknown } | null)?.name);
+        return sendJson(res, 200, { id: u.id, name: u.name });
+      }
       if (method === "POST" && path === "/api/session") return await signIn(res, auth, await readJson(req, 10_000), ws);
       if (method === "GET" && path === "/api/session") return whoAmI(req, res, ws);
       if ((method === "POST" && path === "/api/logout") || (method === "DELETE" && path === "/api/session")) return signOut(res, auth);

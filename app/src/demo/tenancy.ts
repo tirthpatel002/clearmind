@@ -27,7 +27,8 @@ export async function initTenancy(base: string): Promise<void> {
       ${admin.map((u) => card(u, "adm")).join("")}
       <input class="wsq" type="search" placeholder="Search judges by name, title or company" aria-label="Search people" />
       <div class="wslist" role="list">${people.map((u) => card(u)).join("")}<p class="wsnone" hidden>No match.</p></div>
-      ${guest.map((u) => `<button class="wsu gst" data-uid="${esc(u.id)}"><span class="av">?</span><span class="t"><b>${esc(u.name)} — not on the list?</b><small>See only what is shared with the whole workspace</small></span></button>`).join("")}
+      <button class="wsu gst" data-new="1"><span class="av">?</span><span class="t"><b>Not on the list?</b><small>Tell us your name; you will see workspace items plus your own</small></span></button>
+      <form class="wsnew" hidden><label>Your name <input class="wsname" maxlength="60" required autocomplete="name" /></label><button type="submit">Continue</button>${guest.map((u) => ` <button type="button" class="wslink" data-uid="${esc(u.id)}">or browse as ${esc(u.name)}</button>`).join("")}<p class="wserr" role="alert" hidden></p></form>
     </div>`;
     document.body.append(m);
     const q = m.querySelector<HTMLInputElement>(".wsq")!;
@@ -36,7 +37,18 @@ export async function initTenancy(base: string): Promise<void> {
       m.querySelectorAll<HTMLElement>(".wslist .wsu").forEach((b) => { const ok = !v || b.dataset.k!.includes(v); b.hidden = !ok; if (ok) n++; });
       m.querySelector<HTMLElement>(".wsnone")!.hidden = n > 0;
     });
+    const form = m.querySelector<HTMLFormElement>(".wsnew")!, nameIn = m.querySelector<HTMLInputElement>(".wsname")!, err = m.querySelector<HTMLElement>(".wserr")!;
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = nameIn.value.trim();
+      if (!name || name.length > 60) { err.textContent = "Enter a name (1-60 characters)."; err.hidden = false; return; }
+      const r = await fetch(base + "/api/workspace/users", { method: "POST", credentials: cred, headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { err.textContent = j.error ?? "Could not add you"; err.hidden = false; return; }
+      await pick(j.id);
+    });
     m.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("[data-new]")) { form.hidden = false; nameIn.focus(); return; }
       const b = (e.target as HTMLElement).closest<HTMLElement>("[data-uid]");
       if (b) void pick(b.dataset.uid!);
       else if (dismissable && e.target === m) m.remove();

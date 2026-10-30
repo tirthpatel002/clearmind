@@ -78,3 +78,37 @@ describe("workspace sign-in", () => {
     expect(r.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 });
+
+describe("self-added workspace users", () => {
+  it("POST /api/workspace/users creates a persisted member with a unique numbered id", async () => {
+    const add = (name: unknown) => fetch(base + "/api/workspace/users", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+    const a: any = await (await add("  Jane   Doe ")).json();
+    expect(a).toEqual({ id: "user-jane-doe-0001", name: "Jane Doe" });
+    const b: any = await (await add("Jane Doe")).json();
+    expect(b.id).toBe("user-jane-doe-0002");
+    expect((await add("")).status).toBe(400);
+    expect((await add("x".repeat(61))).status).toBe(400);
+    const list: any = await (await fetch(base + "/api/workspace/users")).json();
+    expect(list.users.map((u: any) => u.id)).toEqual(expect.arrayContaining([a.id, b.id]));
+    expect(list.users.length).toBe(users.length + 2);
+    const s = await fetch(base + "/api/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: a.id }) });
+    const me: any = await s.json();
+    expect(me.viewer).toEqual({ id: a.id, admin: false });
+    // rate limit: 5 per minute per address
+    let limited = false;
+    for (let i = 0; i < 6; i++) if ((await add("Spam " + i)).status === 429) limited = true;
+    expect(limited).toBe(true);
+  });
+
+  it("persists across reloads and never reuses numbers", async () => {
+    const { Workspace } = await import("../src/workspace.js");
+    const d = mkdtempSync(join(tmpdir(), "cm-wsadd-")), f = join(d, "added.json");
+    const w1 = new Workspace(users as any).attachAdded(f);
+    expect(w1.add("Ann Lee").id).toBe("user-ann-lee-0001");
+    const w2 = new Workspace(users as any).attachAdded(f);
+    expect(w2.byId.get("user-ann-lee-0001")?.name).toBe("Ann Lee");
+    expect(w2.add("Ann Lee").id).toBe("user-ann-lee-0002");
+    expect(w2.viewer("user-ann-lee-0002")).toEqual({ id: "user-ann-lee-0002", admin: false });
+    expect(() => w2.add("   ")).toThrow();
+  });
+});

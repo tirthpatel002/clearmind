@@ -13,3 +13,10 @@
 .wsu.adm .av{background:var(--accent);color:#fff}.wsu.gst{background:transparent;box-shadow:none;border:1px dashed #c9ccd1}.wsu.gst .av{background:#e6e7e4;color:var(--ink2)}
 .wsq{border:1px solid var(--line);border-radius:12px;padding:9px 12px;font:inherit;margin-top:6px}.wsq:focus{outline:2px solid var(--accent)}
 .wslist{flex:1 1 auto;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:0;padding:2px}.wsnone{color:var(--mute);text-align:center}
+
+.wsnew{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.wsnew label{display:flex;gap:6px;align-items:center;flex:1}
+.wsnew input{flex:1;padding:6px 8px;border-radius:6px;border:1px solid #8884;background:transparent;color:inherit}
+.wsnew button{padding:6px 12px;border-radius:6px;cursor:pointer}
+.wsnew .wslink{background:none;border:0;text-decoration:underline;opacity:.8}
+.wserr{width:100%;color:#e66;margin:0;font-size:.9em}
