@@ -1,12 +1,15 @@
 ---
-question: "What is Dylan Bristot's public X (Twitter) profile?"
-query: "\"Dylan Bristot\" Nebius Token Factory"
-fetchedAt: "2026-10-30T14:04:01.765Z"
+question: "What is Dylan Bristot's public X (Twitter) profile (Nebius Token Factory)?"
+query: "\"Dylan Bristot\" Nebius Token Factory Founding PMM"
+fetchedAt: "2026-10-30T14:15:12.581Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["x.com","twitter.com"]
+mode: search
 creditsUsed: 0
+match: uncertain
+fallbackQuery: "\"Dylan Bristot\" PMM"
 group: judges
 subject: "Dylan Bristot"
 subjectRole: "Founding PMM, Nebius Token Factory"
@@ -16,15 +19,20 @@ sources:
   - "https://x.com/mock/judges/dylan-bristot/x/1"
   - "https://x.com/mock/judges/dylan-bristot/x/2"
 ---
-# What is Dylan Bristot's public X (Twitter) profile?
+# What is Dylan Bristot's public X (Twitter) profile (Nebius Token Factory)?
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Dylan Bristot" Nebius Token Factory` (Tavily basic search, fetched 2026-10-30T14:04:01.765Z)
+Query: `"Dylan Bristot" Nebius Token Factory Founding PMM` (Tavily basic search, fetched 2026-10-30T14:15:12.581Z)
+
+Fallback query (first pass had no clear name+company match): `"Dylan Bristot" PMM`
+
+> **Uncertain match:** no result clearly names this person together with the company or role; results may be about someone else.
+
 
 ## Answer
 
-MOCK answer for "What is Dylan Bristot's public X (Twitter) profile?". This is placeholder text about Dylan Bristot (Founding PMM, Nebius Token Factory), not real data.
+MOCK answer for "What is Dylan Bristot's public X (Twitter) profile (Nebius Token Factory)?". This is placeholder text about Dylan Bristot (Founding PMM, Nebius Token Factory), not real data.
 
 ## Results (2)
 
@@ -33,7 +41,7 @@ MOCK answer for "What is Dylan Bristot's public X (Twitter) profile?". This is p
 - URL: <https://x.com/mock/judges/dylan-bristot/x/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Dylan Bristot" Nebius Token Factory". Not real Tavily output.
+MOCK content 1: placeholder snippet with no clear identity match. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/dylan-bristot/x](https://x.com/mock/judges/dylan-bristot/x/1)
 
@@ -41,6 +49,6 @@ Source: [MOCK result 1 for judges/dylan-bristot/x](https://x.com/mock/judges/dyl
 
 - URL: <https://x.com/mock/judges/dylan-bristot/x/2>
 
-MOCK content 2: placeholder snippet for query ""Dylan Bristot" Nebius Token Factory". Not real Tavily output.
+MOCK content 2: placeholder snippet with no clear identity match. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/dylan-bristot/x](https://x.com/mock/judges/dylan-bristot/x/2)

@@ -1,11 +1,13 @@
 ---
 question: "What is publicly known about Jacquie Capur's professional work as Senior Developer Advocate at Nebius?"
 query: "\"Jacquie Capur\" Nebius Senior Developer Advocate"
-fetchedAt: "2026-10-30T14:04:01.772Z"
+fetchedAt: "2026-10-30T14:15:12.596Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Jacquie Capur"
 subjectRole: "Senior Developer Advocate, Nebius"
@@ -19,7 +21,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Jacquie Capur" Nebius Senior Developer Advocate` (Tavily basic search, fetched 2026-10-30T14:04:01.772Z)
+Query: `"Jacquie Capur" Nebius Senior Developer Advocate` (Tavily basic search, fetched 2026-10-30T14:15:12.596Z)
+
+
 
 ## Answer
 
@@ -32,7 +36,7 @@ MOCK answer for "What is publicly known about Jacquie Capur's professional work 
 - URL: <https://example.com/mock/judges/jacquie-capur/background/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Jacquie Capur" Nebius Senior Developer Advocate". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Jacquie Capur" Nebius Senior Developer Advocate". Mentions Jacquie Capur at Nebius. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/jacquie-capur/background](https://example.com/mock/judges/jacquie-capur/background/1)
 
@@ -40,6 +44,6 @@ Source: [MOCK result 1 for judges/jacquie-capur/background](https://example.com/
 
 - URL: <https://example.com/mock/judges/jacquie-capur/background/2>
 
-MOCK content 2: placeholder snippet for query ""Jacquie Capur" Nebius Senior Developer Advocate". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Jacquie Capur" Nebius Senior Developer Advocate". Mentions Jacquie Capur at Nebius. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/jacquie-capur/background](https://example.com/mock/judges/jacquie-capur/background/2)

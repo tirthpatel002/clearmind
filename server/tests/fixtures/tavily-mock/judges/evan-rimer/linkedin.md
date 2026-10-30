@@ -1,12 +1,14 @@
 ---
-question: "What is Evan Rimer's public LinkedIn profile (Tavily)?"
-query: "\"Evan Rimer\" Tavily"
-fetchedAt: "2026-10-30T14:04:01.766Z"
+question: "What is Evan Rimer's public LinkedIn profile (Forward Deployed Engineer, Tavily)?"
+query: "\"Evan Rimer\" Tavily Forward Deployed Engineer"
+fetchedAt: "2026-10-30T14:15:12.584Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["linkedin.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Evan Rimer"
 subjectRole: "Forward Deployed Engineer, Tavily"
@@ -16,15 +18,17 @@ sources:
   - "https://linkedin.com/mock/judges/evan-rimer/linkedin/1"
   - "https://linkedin.com/mock/judges/evan-rimer/linkedin/2"
 ---
-# What is Evan Rimer's public LinkedIn profile (Tavily)?
+# What is Evan Rimer's public LinkedIn profile (Forward Deployed Engineer, Tavily)?
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Evan Rimer" Tavily` (Tavily basic search, fetched 2026-10-30T14:04:01.766Z)
+Query: `"Evan Rimer" Tavily Forward Deployed Engineer` (Tavily basic search, fetched 2026-10-30T14:15:12.584Z)
+
+
 
 ## Answer
 
-MOCK answer for "What is Evan Rimer's public LinkedIn profile (Tavily)?". This is placeholder text about Evan Rimer (Forward Deployed Engineer, Tavily), not real data.
+MOCK answer for "What is Evan Rimer's public LinkedIn profile (Forward Deployed Engineer, Tavily)?". This is placeholder text about Evan Rimer (Forward Deployed Engineer, Tavily), not real data.
 
 ## Results (2)
 
@@ -33,7 +37,7 @@ MOCK answer for "What is Evan Rimer's public LinkedIn profile (Tavily)?". This i
 - URL: <https://linkedin.com/mock/judges/evan-rimer/linkedin/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Evan Rimer" Tavily". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Evan Rimer" Tavily Forward Deployed Engineer". Mentions Evan Rimer at Tavily. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/evan-rimer/linkedin](https://linkedin.com/mock/judges/evan-rimer/linkedin/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/evan-rimer/linkedin](https://linkedin.com/mock
 
 - URL: <https://linkedin.com/mock/judges/evan-rimer/linkedin/2>
 
-MOCK content 2: placeholder snippet for query ""Evan Rimer" Tavily". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Evan Rimer" Tavily Forward Deployed Engineer". Mentions Evan Rimer at Tavily. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/evan-rimer/linkedin](https://linkedin.com/mock/judges/evan-rimer/linkedin/2)

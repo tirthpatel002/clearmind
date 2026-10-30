@@ -1,144 +1,266 @@
 {
  "source": "https://nebiusglobalaihackathon.devpost.com/",
- "note": "Public professional info only (name, title, company) as listed on the Devpost judges section. No personal data.",
+ "note": "Public professional info only (name, title, company) as listed on the Devpost judges section. No personal data. Optional fields aliases/knownUrls/keywords: filled only from REPORT.md/facts.json/Devpost listing. Those sources list no profile URLs, handles, locations or past companies, so aliases and knownUrls are empty and keywords are taken from the listed title only.",
  "judges": [
   {
    "name": "Nancy Agarwal",
    "slug": "nancy-agarwal",
    "title": "Senior Software Engineer",
-   "company": "NVIDIA"
+   "company": "NVIDIA",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Senior Software Engineer"
+   ]
   },
   {
    "name": "Abhinav Balasubramanian",
    "slug": "abhinav-balasubramanian",
    "title": "Staff AI Engineer",
-   "company": "NVIDIA"
+   "company": "NVIDIA",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Staff AI Engineer"
+   ]
   },
   {
    "name": "Dylan Bristot",
    "slug": "dylan-bristot",
    "title": "Founding PMM",
-   "company": "Nebius Token Factory"
+   "company": "Nebius Token Factory",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "PMM"
+   ]
   },
   {
    "name": "AbdulMajed Raja",
    "slug": "abdulmajed-raja",
    "title": "Developer Relations Lead (Token Factory) - APJ",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Token Factory",
+    "Developer Relations",
+    "APJ"
+   ]
   },
   {
    "name": "Rob Spectre",
    "slug": "rob-spectre",
    "title": "Developer Relations Advisor",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Developer Relations"
+   ]
   },
   {
    "name": "Evan Rimer",
    "slug": "evan-rimer",
    "title": "Forward Deployed Engineer",
-   "company": "Tavily"
+   "company": "Tavily",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Forward Deployed"
+   ]
   },
   {
    "name": "Lakshmi Rameish",
    "slug": "lakshmi-rameish",
    "title": "Senior System Software Engineer",
-   "company": "NVIDIA"
+   "company": "NVIDIA",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "System Software"
+   ]
   },
   {
    "name": "Surbhi Jha",
    "slug": "surbhi-jha",
    "title": "Senior Software Engineer",
-   "company": "NVIDIA"
+   "company": "NVIDIA",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Senior Software Engineer"
+   ]
   },
   {
    "name": "Joe Sarabia",
    "slug": "joe-sarabia",
    "title": "Director of Product, Ecosystem",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Ecosystem"
+   ]
   },
   {
    "name": "Marouane Khoukh",
    "slug": "marouane-khoukh",
    "title": "Technical Developer Advocate",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Developer Advocate"
+   ]
   },
   {
    "name": "Ricky Johnson",
    "slug": "ricky-johnson",
    "title": "Developer Relations",
-   "company": "Tavily"
+   "company": "Tavily",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Developer Relations"
+   ]
   },
   {
    "name": "Selena Williams",
    "slug": "selena-williams",
    "title": "System Software Engineer",
-   "company": "NVIDIA"
+   "company": "NVIDIA",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "System Software"
+   ]
   },
   {
    "name": "Aleksandr Patrushev",
    "slug": "aleksandr-patrushev",
    "title": "Head of Product Management, ML/AI",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "ML/AI"
+   ]
   },
   {
    "name": "Unmesh Kurup",
    "slug": "unmesh-kurup",
    "title": "Chief ML Researcher, Product",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "ML Researcher"
+   ]
   },
   {
    "name": "Daniel Myers",
    "slug": "daniel-myers",
    "title": "Director of Developer Relations",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Developer Relations"
+   ]
   },
   {
    "name": "Jacquie Capur",
    "slug": "jacquie-capur",
    "title": "Senior Developer Advocate",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Developer Advocate"
+   ]
   },
   {
    "name": "Lakshya Prakash Agarwal",
    "slug": "lakshya-prakash-agarwal",
    "title": "Forward Deployed Engineer",
-   "company": "Tavily"
+   "company": "Tavily",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Forward Deployed"
+   ]
   },
   {
    "name": "Johnny Nunez",
    "slug": "johnny-nunez",
    "title": "AI Developer Advocate - Physical AI & Robotics",
-   "company": "NVIDIA"
+   "company": "NVIDIA",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Physical AI",
+    "Robotics",
+    "Developer Advocate"
+   ]
   },
   {
    "name": "Evan Helda",
    "slug": "evan-helda",
    "title": "Head of GTM Physical AI",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Physical AI",
+    "GTM"
+   ]
   },
   {
    "name": "Mikhail Rozhkov",
    "slug": "mikhail-rozhkov",
    "title": "Technical Product Manager - Serverless AI",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Serverless AI"
+   ]
   },
   {
    "name": "Dhruv Diddi",
    "slug": "dhruv-diddi",
    "title": "Principal - Physical AI Ecosystem",
-   "company": "Nebius"
+   "company": "Nebius",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Physical AI",
+    "Ecosystem"
+   ]
   },
   {
    "name": "Aditya Sahu",
    "slug": "aditya-sahu",
    "title": "TME, Jetson Platform",
-   "company": "NVIDIA"
+   "company": "NVIDIA",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "Jetson",
+    "TME"
+   ]
   },
   {
    "name": "Sayali Kandarkar",
    "slug": "sayali-kandarkar",
    "title": "Senior AI/ML Engineer",
-   "company": "NVIDIA"
+   "company": "NVIDIA",
+   "aliases": [],
+   "knownUrls": [],
+   "keywords": [
+    "AI/ML"
+   ]
   }
  ]
 }

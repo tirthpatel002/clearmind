@@ -1,12 +1,14 @@
 ---
 question: "What is Aditya Sahu's public GitHub profile and notable public repositories?"
-query: "\"Aditya Sahu\" NVIDIA"
-fetchedAt: "2026-10-30T14:04:01.775Z"
+query: "\"Aditya Sahu\" NVIDIA TME, Jetson Platform"
+fetchedAt: "2026-10-30T14:15:12.604Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["github.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Aditya Sahu"
 subjectRole: "TME, Jetson Platform, NVIDIA"
@@ -20,7 +22,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Aditya Sahu" NVIDIA` (Tavily basic search, fetched 2026-10-30T14:04:01.775Z)
+Query: `"Aditya Sahu" NVIDIA TME, Jetson Platform` (Tavily basic search, fetched 2026-10-30T14:15:12.604Z)
+
+
 
 ## Answer
 
@@ -33,7 +37,7 @@ MOCK answer for "What is Aditya Sahu's public GitHub profile and notable public 
 - URL: <https://github.com/mock/judges/aditya-sahu/github/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Aditya Sahu" NVIDIA". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Aditya Sahu" NVIDIA TME, Jetson Platform". Mentions Aditya Sahu at NVIDIA. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/aditya-sahu/github](https://github.com/mock/judges/aditya-sahu/github/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/aditya-sahu/github](https://github.com/mock/ju
 
 - URL: <https://github.com/mock/judges/aditya-sahu/github/2>
 
-MOCK content 2: placeholder snippet for query ""Aditya Sahu" NVIDIA". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Aditya Sahu" NVIDIA TME, Jetson Platform". Mentions Aditya Sahu at NVIDIA. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/aditya-sahu/github](https://github.com/mock/judges/aditya-sahu/github/2)

@@ -1,12 +1,14 @@
 ---
 question: "What is Joe Sarabia's public GitHub profile and notable public repositories?"
-query: "\"Joe Sarabia\" Nebius"
-fetchedAt: "2026-10-30T14:04:01.769Z"
+query: "\"Joe Sarabia\" Nebius Director of Product, Ecosystem"
+fetchedAt: "2026-10-30T14:15:12.589Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["github.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Joe Sarabia"
 subjectRole: "Director of Product, Ecosystem, Nebius"
@@ -20,7 +22,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Joe Sarabia" Nebius` (Tavily basic search, fetched 2026-10-30T14:04:01.769Z)
+Query: `"Joe Sarabia" Nebius Director of Product, Ecosystem` (Tavily basic search, fetched 2026-10-30T14:15:12.589Z)
+
+
 
 ## Answer
 
@@ -33,7 +37,7 @@ MOCK answer for "What is Joe Sarabia's public GitHub profile and notable public 
 - URL: <https://github.com/mock/judges/joe-sarabia/github/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Joe Sarabia" Nebius". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Joe Sarabia" Nebius Director of Product, Ecosystem". Mentions Joe Sarabia at Nebius. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/joe-sarabia/github](https://github.com/mock/judges/joe-sarabia/github/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/joe-sarabia/github](https://github.com/mock/ju
 
 - URL: <https://github.com/mock/judges/joe-sarabia/github/2>
 
-MOCK content 2: placeholder snippet for query ""Joe Sarabia" Nebius". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Joe Sarabia" Nebius Director of Product, Ecosystem". Mentions Joe Sarabia at Nebius. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/joe-sarabia/github](https://github.com/mock/judges/joe-sarabia/github/2)

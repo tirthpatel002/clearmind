@@ -1,12 +1,14 @@
 ---
 question: "What is Rob Spectre's public GitHub profile and notable public repositories?"
-query: "\"Rob Spectre\" Nebius"
-fetchedAt: "2026-10-30T14:04:01.766Z"
+query: "\"Rob Spectre\" Nebius Developer Relations Advisor"
+fetchedAt: "2026-10-30T14:15:12.584Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["github.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Rob Spectre"
 subjectRole: "Developer Relations Advisor, Nebius"
@@ -20,7 +22,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Rob Spectre" Nebius` (Tavily basic search, fetched 2026-10-30T14:04:01.766Z)
+Query: `"Rob Spectre" Nebius Developer Relations Advisor` (Tavily basic search, fetched 2026-10-30T14:15:12.584Z)
+
+
 
 ## Answer
 
@@ -33,7 +37,7 @@ MOCK answer for "What is Rob Spectre's public GitHub profile and notable public 
 - URL: <https://github.com/mock/judges/rob-spectre/github/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Rob Spectre" Nebius". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Rob Spectre" Nebius Developer Relations Advisor". Mentions Rob Spectre at Nebius. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/rob-spectre/github](https://github.com/mock/judges/rob-spectre/github/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/rob-spectre/github](https://github.com/mock/ju
 
 - URL: <https://github.com/mock/judges/rob-spectre/github/2>
 
-MOCK content 2: placeholder snippet for query ""Rob Spectre" Nebius". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Rob Spectre" Nebius Developer Relations Advisor". Mentions Rob Spectre at Nebius. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/rob-spectre/github](https://github.com/mock/judges/rob-spectre/github/2)

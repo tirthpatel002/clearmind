@@ -1,11 +1,13 @@
 ---
 question: "What is publicly known about Daniel Myers's professional work as Director of Developer Relations at Nebius?"
 query: "\"Daniel Myers\" Nebius Director of Developer Relations"
-fetchedAt: "2026-10-30T14:04:01.772Z"
+fetchedAt: "2026-10-30T14:15:12.595Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Daniel Myers"
 subjectRole: "Director of Developer Relations, Nebius"
@@ -19,7 +21,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Daniel Myers" Nebius Director of Developer Relations` (Tavily basic search, fetched 2026-10-30T14:04:01.772Z)
+Query: `"Daniel Myers" Nebius Director of Developer Relations` (Tavily basic search, fetched 2026-10-30T14:15:12.595Z)
+
+
 
 ## Answer
 
@@ -32,7 +36,7 @@ MOCK answer for "What is publicly known about Daniel Myers's professional work a
 - URL: <https://example.com/mock/judges/daniel-myers/background/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Daniel Myers" Nebius Director of Developer Relations". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Daniel Myers" Nebius Director of Developer Relations". Mentions Daniel Myers at Nebius. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/daniel-myers/background](https://example.com/mock/judges/daniel-myers/background/1)
 
@@ -40,6 +44,6 @@ Source: [MOCK result 1 for judges/daniel-myers/background](https://example.com/m
 
 - URL: <https://example.com/mock/judges/daniel-myers/background/2>
 
-MOCK content 2: placeholder snippet for query ""Daniel Myers" Nebius Director of Developer Relations". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Daniel Myers" Nebius Director of Developer Relations". Mentions Daniel Myers at Nebius. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/daniel-myers/background](https://example.com/mock/judges/daniel-myers/background/2)

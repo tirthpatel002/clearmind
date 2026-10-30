@@ -1,12 +1,14 @@
 ---
-question: "What is Dylan Bristot's public LinkedIn profile (Nebius Token Factory)?"
-query: "\"Dylan Bristot\" Nebius Token Factory"
-fetchedAt: "2026-10-30T14:04:01.765Z"
+question: "What is Dylan Bristot's public LinkedIn profile (Founding PMM, Nebius Token Factory)?"
+query: "\"Dylan Bristot\" Nebius Token Factory Founding PMM"
+fetchedAt: "2026-10-30T14:15:12.581Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["linkedin.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Dylan Bristot"
 subjectRole: "Founding PMM, Nebius Token Factory"
@@ -16,15 +18,17 @@ sources:
   - "https://linkedin.com/mock/judges/dylan-bristot/linkedin/1"
   - "https://linkedin.com/mock/judges/dylan-bristot/linkedin/2"
 ---
-# What is Dylan Bristot's public LinkedIn profile (Nebius Token Factory)?
+# What is Dylan Bristot's public LinkedIn profile (Founding PMM, Nebius Token Factory)?
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Dylan Bristot" Nebius Token Factory` (Tavily basic search, fetched 2026-10-30T14:04:01.765Z)
+Query: `"Dylan Bristot" Nebius Token Factory Founding PMM` (Tavily basic search, fetched 2026-10-30T14:15:12.581Z)
+
+
 
 ## Answer
 
-MOCK answer for "What is Dylan Bristot's public LinkedIn profile (Nebius Token Factory)?". This is placeholder text about Dylan Bristot (Founding PMM, Nebius Token Factory), not real data.
+MOCK answer for "What is Dylan Bristot's public LinkedIn profile (Founding PMM, Nebius Token Factory)?". This is placeholder text about Dylan Bristot (Founding PMM, Nebius Token Factory), not real data.
 
 ## Results (2)
 
@@ -33,7 +37,7 @@ MOCK answer for "What is Dylan Bristot's public LinkedIn profile (Nebius Token F
 - URL: <https://linkedin.com/mock/judges/dylan-bristot/linkedin/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Dylan Bristot" Nebius Token Factory". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Dylan Bristot" Nebius Token Factory Founding PMM". Mentions Dylan Bristot at Nebius Token Factory. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/dylan-bristot/linkedin](https://linkedin.com/mock/judges/dylan-bristot/linkedin/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/dylan-bristot/linkedin](https://linkedin.com/m
 
 - URL: <https://linkedin.com/mock/judges/dylan-bristot/linkedin/2>
 
-MOCK content 2: placeholder snippet for query ""Dylan Bristot" Nebius Token Factory". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Dylan Bristot" Nebius Token Factory Founding PMM". Mentions Dylan Bristot at Nebius Token Factory. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/dylan-bristot/linkedin](https://linkedin.com/mock/judges/dylan-bristot/linkedin/2)

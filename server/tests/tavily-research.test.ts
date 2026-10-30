@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildPlan, estimate, loadInputs, mockFetcher, research, tavilyFetcher, type Planned } from "../../scripts/tavily-research.js";
+import { buildPlan, estimate, loadInputs, matchOf, mockFetcher, research, tavilyFetcher, worstCase, type Planned } from "../../scripts/tavily-research.js";
 
 const { judges, config } = loadInputs();
 const plan = buildPlan(judges, config);
@@ -18,7 +18,11 @@ describe("tavily-research (offline)", () => {
     expect(plan).toHaveLength(23 * config.judgeQuestions.length + config.sponsorQuestions.length);
     expect(estimate(plan)).toBe(plan.reduce((s, q) => s + (q.depth === "advanced" ? 2 : 1), 0));
     expect(estimate(plan)).toBeLessThanOrEqual(300);
-    for (const t of ["linkedin", "x", "github"]) expect(plan.filter((q) => q.id.endsWith(`/${t}`))).toHaveLength(23);
+    expect(worstCase(plan)).toBe(estimate(plan) + 23 * config.judgeQuestions.length);
+    const bg = plan.find((q) => q.id === "judges/dylan-bristot/background")!;
+    expect(bg.query).toContain('"Dylan Bristot"'); expect(bg.query).toContain("Nebius Token Factory"); expect(bg.query).toContain("Founding PMM");
+    expect(bg.fallbackQuery).toBe('"Dylan Bristot" PMM');
+    for (const t of ["background", "linkedin", "x", "github", "talks", "writing", "projects", "views"]) expect(plan.filter((q) => q.id.endsWith(`/${t}`))).toHaveLength(23);
   });
 
   it("mock run writes the full tree with correct frontmatter and visibility", async () => {
@@ -36,7 +40,11 @@ describe("tavily-research (offline)", () => {
       const f = fm(readFileSync(join(out, q.path), "utf8"));
       expect(f).toContain(`visibleTo: ${JSON.stringify(q.group === "judges" ? [`judge-${q.judge!.slug}`] : ["workspace"])}`);
     }
-    expect(fm(readFileSync(join(out, "sponsors/nebius-token-factory.md"), "utf8"))).toMatch(/searchDepth: advanced/);
+    expect(fm(nancy)).toMatch(/match: confident/);
+    const x = readFileSync(join(out, "judges/nancy-agarwal/x.md"), "utf8");
+    expect(fm(x)).toMatch(/match: uncertain/); expect(fm(x)).toContain("fallbackQuery:"); expect(x).toContain("Uncertain match");
+    expect(st.retried).toHaveLength(23);
+    expect(fm(readFileSync(join(out, "sponsors/token-factory-models.md"), "utf8"))).toMatch(/searchDepth: advanced/);
   });
 
   it("credit cap stops early without exceeding it", async () => {
@@ -67,5 +75,25 @@ describe("tavily-research (offline)", () => {
     expect(n).toBe(3); expect(r.results[0]!.url).toBe("https://u");
     const bad = (async () => new Response("", { status: 401 })) as typeof fetch;
     await expect(tavilyFetcher("k", { fetchImpl: bad, baseDelayMs: 1 })(plan[0]!)).rejects.toThrow("tavily 401");
+  });
+
+  it("uses extract for a known profile URL, and fallback rescues a weak first pass", async () => {
+    const j = { ...judges[0]!, knownUrls: ["https://www.linkedin.com/in/example-known"] };
+    const p = buildPlan([j], config, "judges");
+    const li = p.find((q) => q.id.endsWith("/linkedin"))!;
+    expect(li.extractUrls).toEqual(["https://www.linkedin.com/in/example-known"]); expect(li.fallbackQuery).toBeUndefined();
+    expect(p.find((q) => q.id.endsWith("/x"))!.extractUrls).toBeUndefined();
+    let body: any; const fake = (async (u: string, init: any) => { body = { u, ...JSON.parse(init.body) }; return new Response(JSON.stringify({ results: [{ url: "https://www.linkedin.com/in/example-known", raw_content: "x" }] })); }) as unknown as typeof fetch;
+    await tavilyFetcher("k", { fetchImpl: fake })(li);
+    expect(body.u).toContain("/extract"); expect(body.urls).toEqual(li.extractUrls);
+    const out = tmp(); const queries: string[] = [];
+    const fetcher = async (q: Planned) => { queries.push(q.query); return q.query === q.fallbackQuery
+      ? { answer: "", results: [{ title: `${j.name} - ${j.company}`, url: "https://e/1", content: "" }] } : { answer: "", results: [{ title: "someone else", url: "https://e/0", content: "" }] }; };
+    const bg = p.filter((q) => q.id.endsWith("/background"));
+    const st = await research(bg, { outDir: out, fetcher, mock: false, maxCredits: 300, log: quiet });
+    expect(queries).toHaveLength(2); expect(st.creditsUsed).toBe(2);
+    const f = fm(readFileSync(join(out, bg[0]!.path), "utf8"));
+    expect(f).toMatch(/match: confident/); expect(f).toMatch(/creditsUsed: 2/);
+    expect(matchOf(j, { answer: "", results: [{ title: j.name, url: "u", content: "unrelated" }] })).toBe("uncertain");
   });
 });

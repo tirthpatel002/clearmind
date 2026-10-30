@@ -1,12 +1,14 @@
 ---
 question: "What is Sayali Kandarkar's public GitHub profile and notable public repositories?"
-query: "\"Sayali Kandarkar\" NVIDIA"
-fetchedAt: "2026-10-30T14:04:01.776Z"
+query: "\"Sayali Kandarkar\" NVIDIA Senior AI/ML Engineer"
+fetchedAt: "2026-10-30T14:15:12.605Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["github.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Sayali Kandarkar"
 subjectRole: "Senior AI/ML Engineer, NVIDIA"
@@ -20,7 +22,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Sayali Kandarkar" NVIDIA` (Tavily basic search, fetched 2026-10-30T14:04:01.776Z)
+Query: `"Sayali Kandarkar" NVIDIA Senior AI/ML Engineer` (Tavily basic search, fetched 2026-10-30T14:15:12.605Z)
+
+
 
 ## Answer
 
@@ -33,7 +37,7 @@ MOCK answer for "What is Sayali Kandarkar's public GitHub profile and notable pu
 - URL: <https://github.com/mock/judges/sayali-kandarkar/github/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Sayali Kandarkar" NVIDIA". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Sayali Kandarkar" NVIDIA Senior AI/ML Engineer". Mentions Sayali Kandarkar at NVIDIA. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/sayali-kandarkar/github](https://github.com/mock/judges/sayali-kandarkar/github/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/sayali-kandarkar/github](https://github.com/mo
 
 - URL: <https://github.com/mock/judges/sayali-kandarkar/github/2>
 
-MOCK content 2: placeholder snippet for query ""Sayali Kandarkar" NVIDIA". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Sayali Kandarkar" NVIDIA Senior AI/ML Engineer". Mentions Sayali Kandarkar at NVIDIA. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/sayali-kandarkar/github](https://github.com/mock/judges/sayali-kandarkar/github/2)
