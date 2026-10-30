@@ -21,6 +21,7 @@ export const memoryRoutes: Route[] = [
       cm.page({
         viewer,
         limit: Number(q.get("limit") ?? cfg.ui.pageSize),
+        offset: Number(q.get("offset") ?? 0),
         cursor: q.get("cursor"),
         q: opt(q.get("q")),
         scope: opt(q.get("scope")),

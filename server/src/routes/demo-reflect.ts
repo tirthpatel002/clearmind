@@ -121,11 +121,24 @@ const GRAPH_MAX_NODES = 1500;
 // The map is recomputed only when the stores change (it takes seconds on a 5k-memory store): keyed per viewer.
 const graphCache = new Map<string, Promise<unknown>>();
 const mt = (f: string) => { try { return statSync(f).mtimeMs; } catch { return 0; } };
-function graphCached(cfg: Config, user: string, cm?: RouteContext["cm"], viewer?: Viewer) {
+export function graphCached(cfg: Config, user: string, cm?: RouteContext["cm"], viewer?: Viewer) {
   const d = cfg.dataDir, key = [user, viewer?.id ?? "", viewer?.admin ? 1 : 0, ...["memory.db", "memory.db-wal", "entities.db", "entities.db-wal", `insights.${user}.json`].map((f) => mt(join(d, f)))].join("|");
   let p = graphCache.get(key);
   if (!p) { if (graphCache.size > 64) graphCache.clear(); p = graph(cfg, user, cm, viewer); graphCache.set(key, p); p.catch(() => graphCache.delete(key)); }
   return p;
+}
+/**
+ * Optional display paging of the map (?limit=&offset=, default 100, max 500) over the cached per-viewer graph:
+ * a page holds those nodes and the edges between nodes on pages up to and including it. Without either
+ * parameter the whole graph is returned as before.
+ */
+export function pageGraph(g: any, q: URLSearchParams): any {
+  if (!g || !Array.isArray(g.nodes) || (!q.has("limit") && !q.has("offset"))) return g;
+  const limit = Math.min(500, Math.max(1, Number(q.get("limit") ?? 100) || 100)), offset = Math.max(0, Number(q.get("offset") ?? 0) || 0);
+  const all = g.nodes as { id: string }[], nodes = all.slice(offset, offset + limit);
+  const upto = new Set(all.slice(0, offset + limit).map((n) => n.id)), mine = new Set(nodes.map((n) => n.id));
+  const edges = ((g.edges ?? []) as { from: string; to: string }[]).filter((e) => upto.has(e.from) && upto.has(e.to) && (mine.has(e.from) || mine.has(e.to)));
+  return { ...g, nodes, edges, total: all.length, nextOffset: offset + nodes.length < all.length ? offset + nodes.length : null };
 }
 const clipText = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 export async function graph(cfg: Config, user: string, cm?: RouteContext["cm"], viewer?: Viewer) {
@@ -193,6 +206,6 @@ export const reflectRoutes: Route[] = [
     const r = readInsights(cfg, user); const text = new Map(allRows(cfg, user).filter((x) => !vis || vis.has(x.lesson_id)).map((x) => [x.lesson_id, x.text]));
     return { ...r, insights: visibleInsights(r.insights, vis).map((i) => ({ ...i, evidenceText: i.evidence.map((id) => ({ id, text: text.get(id) ?? "(deleted)" })) })) };
   } },
-  { method: "GET", path: "/api/demo/graph", handle: ({ cfg, user, cm, viewer }: RouteContext) => graphCached(cfg, user, cm, viewer) },
+  { method: "GET", path: "/api/demo/graph", handle: async ({ cfg, user, cm, viewer, query }: RouteContext) => pageGraph(await graphCached(cfg, user, cm, viewer), query) },
 ];
 export const hasInsights = (cfg: Config, user: string) => existsSync(insightFile(cfg, user));

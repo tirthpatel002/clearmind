@@ -413,12 +413,16 @@ export class Clearmind {
   /** Entity list for a viewer (same options as EntityStore.list); total/counts are for what the viewer can see. */
   async entityList(o: { type?: string; q?: string; limit?: number; offset?: number } = {}, viewer?: Viewer) {
     const es = this.entities, s = await this.visibleEntityIds(viewer);
-    if (!s) return { entities: es.list(o), total: es.total(), counts: es.counts() };
+    if (!s) {
+      const entities = es.list(o), off = o.offset ?? 0, total = o.type || o.q ? es.list({ ...o, limit: 1_000_000, offset: 0 }).length : es.total();
+      return { entities, total, nextOffset: off + entities.length < total ? off + entities.length : null, counts: es.counts() };
+    }
     const ids = [...s], all = es.list({ ...o, limit: 10_000, offset: 0, only: ids });
     const counts: Record<string, number> = {};
     for (const e of es.list({ limit: 10_000, only: ids })) counts[e.type ?? ""] = (counts[e.type ?? ""] ?? 0) + 1;
     const off = o.offset ?? 0;
-    return { entities: all.slice(off, off + Math.min(o.limit ?? 100, 10_000)), total: s.size, counts };
+    const page = all.slice(off, off + Math.min(o.limit ?? 100, 10_000));
+    return { entities: page, total: all.length, nextOffset: off + page.length < all.length ? off + page.length : null, counts };
   }
   /** Entity detail with memories, fields and relations limited to what the viewer can see; null when hidden. */
   async entityDetail(id: string, viewer?: Viewer): Promise<EntityDetail | null> {
@@ -753,20 +757,16 @@ export class Clearmind {
 
   /** Newest first. cursor = opaque "createdAt|id". scope matches any tag. q is a case-insensitive substring. */
   async page(
-    o: { limit?: number; cursor?: string | null; q?: string; scope?: string; status?: MemoryStatusFilter; viewer?: Viewer } = {},
+    o: { limit?: number; offset?: number; cursor?: string | null; q?: string; scope?: string; status?: MemoryStatusFilter; viewer?: Viewer } = {},
   ): Promise<MemoryPage> {
     const db = await this.db();
-    const limit = Math.min(200, Math.max(1, o.limit ?? this.cfg.ui.pageSize));
+    // display paging only: q (search) is a SQL filter over the whole store, applied with visibility before LIMIT/OFFSET
+    const limit = Math.min(500, Math.max(1, o.limit ?? this.cfg.ui.pageSize));
+    const offset = Math.max(0, Math.floor(Number(o.offset) || 0));
     const st = o.status === "all" ? ["active", "replaced"] : [o.status ?? "active"];
     let sql = `SELECT lesson_id, text, status, replaced_by, created_at, confidence, extra FROM lessons
       WHERE namespace=? AND user_id=? AND agent_id=? AND status IN (${st.map(() => "?").join(",")})`;
     const p: string[] = [...this.w, ...st];
-    if (o.cursor) {
-      const i = o.cursor.lastIndexOf("|");
-      const at = o.cursor.slice(0, i);
-      sql += ` AND (created_at < ? OR (created_at = ? AND lesson_id < ?))`;
-      p.push(at, at, o.cursor.slice(i + 1));
-    }
     if (o.scope) {
       sql += ` AND EXISTS (SELECT 1 FROM json_each(extra,'$.tags') WHERE value = ?)`;
       p.push(normScope(o.scope));
@@ -780,11 +780,19 @@ export class Clearmind {
       sql += ` AND ${w}`;
       p.push(...vp);
     }
-    sql += ` ORDER BY created_at DESC, lesson_id DESC LIMIT ${limit + 1}`;
+    const total = Number((db.prepare(`SELECT COUNT(*) AS n FROM (${sql})`).get(...p) as any).n);
+    if (o.cursor) {
+      const i = o.cursor.lastIndexOf("|");
+      const at = o.cursor.slice(0, i);
+      sql += ` AND (created_at < ? OR (created_at = ? AND lesson_id < ?))`;
+      p.push(at, at, o.cursor.slice(i + 1));
+    }
+    const off = o.cursor ? 0 : offset;
+    sql += ` ORDER BY created_at DESC, lesson_id DESC LIMIT ${limit + 1} OFFSET ${off}`;
     const rows = db.prepare(sql).all(...p) as any[];
     const items = rows.slice(0, limit).map((r) => this.rowMemory(r));
-    const last = items.at(-1);
-    return { items, nextCursor: rows.length > limit && last ? `${last.createdAt}|${last.id}` : null };
+    const last = items.at(-1), more = rows.length > limit;
+    return { items, nextCursor: more && last ? `${last.createdAt}|${last.id}` : null, total, nextOffset: more && !o.cursor ? off + items.length : null };
   }
 
   /** Aggregates, cached until memories change (and at most a minute, since confidence decays with time). */

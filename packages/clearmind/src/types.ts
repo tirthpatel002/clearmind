@@ -22,6 +22,10 @@ export interface Memory {
 export interface MemoryPage {
   items: Memory[];
   nextCursor: string | null;
+  /** Matching memories this viewer can see (all pages). */
+  total?: number;
+  /** Offset of the next page when paging by offset (null on the last page or when paging by cursor). */
+  nextOffset?: number | null;
 }
 
 export interface MemoryStats {
