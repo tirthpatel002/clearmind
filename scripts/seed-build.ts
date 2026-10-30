@@ -15,7 +15,7 @@ const price = arg("price") ? Number(arg("price")) : null;
 
 if (run && (!dir || !validUserId(user))) { console.error("usage: seed-build.ts --dir <dataDir> --user <id> [--run]"); process.exit(2); }
 
-const plan = await ingestPath(null, root, { dryRun: true, since });
+const plan = await ingestPath(null, root, { dryRun: true, since, skipMock: true });
 console.log(`plan (${root}):`);
 console.log(fmtIngest(plan, true));
 const byReason: Record<string, string[]> = {};
@@ -36,7 +36,7 @@ if (!run) { console.log("dry run only; pass --run --dir <dataDir> --user <id> to
 const cfg = loadConfig({ overrides: { dataDir: dir } });
 const cm = Clearmind.fromEnv(dir!, user!, { offline: process.argv.includes("--offline"), config: cfg });
 try {
-  const r = await ingestPath(cm, root, { since, log: (s) => console.log(s) });
+  const r = await ingestPath(cm, root, { since, skipMock: true, log: (s) => console.log(s) });
   console.log(fmtIngest(r, false));
   if (cm.online) console.log(`entity embeddings: ${await cm.embedEntities()}`);
 } finally { await cm.close(); }

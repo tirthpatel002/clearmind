@@ -54,6 +54,8 @@ export interface IngestOptions {
   /** Manifest file (default <dataDir>/ingest-manifest.json). */
   manifest?: string;
   log?: (s: string) => void;
+  /** Skip markdown whose frontmatter says mock: true (test fixtures), so fake data never lands in a real store. */
+  skipMock?: boolean;
 }
 export interface IngestResult {
   root: string; commit: string | null; files: number; changedFiles: number; chunks: number; written: number;
@@ -627,10 +629,12 @@ export async function ingestPath(cm: Clearmind | null, path: string, o: IngestOp
     if (why) { res.skipped.push({ path: rel, reason: why }); continue; }
     const src = readFileSync(fp, "utf8");
     const hash = sha(src);
+    const fc = await chunkFile(rel, src);
+    if (o.skipMock && String(fc.frontmatter?.mock) === "true") { res.skipped.push({ path: rel, reason: "mock-fixture" }); continue; }
     res.files++;
     const old = prev[rel];
     const write = !(sel.changed && old && !sel.changed.has(rel));
-    got.push({ rel, hash, fc: await chunkFile(rel, src), write });
+    got.push({ rel, hash, fc, write });
   }
   const files = new Set(got.map((g) => g.rel));
   const pkgs = new Map<string, string>();
