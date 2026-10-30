@@ -1,0 +1,119 @@
+{
+  "git_sha": "2cff2206ac05a97a10538e1b94aa015b7788c390",
+  "agentmemory_git_sha": "10b111656d510b909449918605ba7fd9090a7fec",
+  "config": {
+    "data": "/home/ubuntu/work/projects/clearmind/.worktrees/bench/bench/fixtures",
+    "system": "before",
+    "retriever": "embedding",
+    "embedder": "/home/ubuntu/work/projects/clearmind/.worktrees/bench/bench/fixtures/fake-embedder.mjs",
+    "k": 10,
+    "per_category": null,
+    "cases": null,
+    "baseline_path": "/home/ubuntu/work/projects/agentmemory/dist/index.js",
+    "agentmemory_git_sha": "10b111656d510b909449918605ba7fd9090a7fec",
+    "worktree_git_sha": "2cff2206ac05a97a10538e1b94aa015b7788c390",
+    "agentmemory_sha": "10b111656d510b909449918605ba7fd9090a7fec",
+    "worktree_sha": "2cff2206ac05a97a10538e1b94aa015b7788c390"
+  },
+  "counts": {
+    "total": 7,
+    "recall": 3,
+    "abstention": 1,
+    "policy": 3,
+    "by_category": {
+      "knowledge_update": 1,
+      "single_session": 1,
+      "temporal": 1,
+      "abstention": 1,
+      "allowed": 1,
+      "after_expiry": 1,
+      "cross_user": 1
+    }
+  },
+  "metrics": {
+    "overall": {
+      "recall_abstention": {
+        "count": 4,
+        "answerable_count": 3,
+        "abstention_count": 1,
+        "hit_at_1": 0.6667,
+        "mrr": 0.6667,
+        "recall_at_5": 0.6667,
+        "newest_wins": 1,
+        "stale_top1_rate": 0,
+        "abstain_rate": 1,
+        "false_abstain_rate": 0.3333
+      },
+      "policy": {
+        "count": 3,
+        "expected_allowed_count": 1,
+        "expected_denied_count": 2,
+        "decision_accuracy": 0.3333,
+        "leak_rate_expected_denied": 1,
+        "leak_rate_overall": 0.6667,
+        "allowed_recall": 1
+      }
+    },
+    "by_category": {
+      "knowledge_update": {
+        "type": "recall",
+        "count": 1,
+        "hit_at_1": 1,
+        "mrr": 1,
+        "recall_at_5": 1,
+        "newest_wins": 1,
+        "stale_top1_rate": 0,
+        "false_abstain_rate": 0
+      },
+      "single_session": {
+        "type": "recall",
+        "count": 1,
+        "hit_at_1": 0,
+        "mrr": 0,
+        "recall_at_5": 0,
+        "newest_wins": null,
+        "stale_top1_rate": null,
+        "false_abstain_rate": 1
+      },
+      "temporal": {
+        "type": "recall",
+        "count": 1,
+        "hit_at_1": 1,
+        "mrr": 1,
+        "recall_at_5": 1,
+        "newest_wins": null,
+        "stale_top1_rate": null,
+        "false_abstain_rate": 0
+      },
+      "abstention": {
+        "type": "abstention",
+        "count": 1,
+        "abstain_rate": 1
+      },
+      "allowed": {
+        "type": "policy",
+        "count": 1,
+        "decision_accuracy": 1,
+        "leak_rate_expected_denied": null,
+        "leak_rate_overall": 0,
+        "allowed_recall": 1
+      },
+      "after_expiry": {
+        "type": "policy",
+        "count": 1,
+        "decision_accuracy": 0,
+        "leak_rate_expected_denied": 1,
+        "leak_rate_overall": 1,
+        "allowed_recall": null
+      },
+      "cross_user": {
+        "type": "policy",
+        "count": 1,
+        "decision_accuracy": 0,
+        "leak_rate_expected_denied": 1,
+        "leak_rate_overall": 1,
+        "allowed_recall": null
+      }
+    }
+  }
+}
