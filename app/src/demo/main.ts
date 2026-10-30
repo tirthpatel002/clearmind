@@ -222,7 +222,7 @@ function webSources(r: any) {
 }
 function chatItem(m: any, idx: number): string {
   if (m.role === "user") return `<div class="msg user"><span>${esc(m.q)}</span></div>`;
-  if (m.pending) return `<div class="msg"><div class="bub spin">${m.slow ? "Not in memory yet, researching live" : "Thinking"}<span class="dots"><i></i><i></i><i></i></span></div></div>`;
+  if (m.pending) return `<div class="msg"><div class="bub spin">${m.slow ? "Searching memory" : "Thinking"}<span class="dots"><i></i><i></i><i></i></span></div></div>`;
   if (m.error) return `<div class="msg"><div class="bub refused">${esc(m.error)}</div></div>`;
   if (m.research) return researchItem(m.research);
   const r = m.r; if (!r) return "";
