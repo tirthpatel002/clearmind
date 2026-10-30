@@ -1,5 +1,5 @@
 // Demo routes for reflect (derived insights) and the memory graph (relations between memories).
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { ADMIN, WORKSPACE } from "@clearmind/core";
@@ -117,9 +117,25 @@ async function entityHubs(cm: RouteContext["cm"], ids: Set<string>, n: number, v
   return out.sort((a, b) => b.score - a.score).slice(0, 80);
 }
 const NOT_ENTITY = new Set("Maya Chat Clearmind Journal Meeting Agent Email Action Calendar Profile Team Food Trip Org Breakfast Lunch Woke Around Evening Saturday Sunday Monday Tuesday Wednesday Thursday Friday Sep Oct Nov Dec IST The From Your If Install Installed Stayed Went Decided Agreed Usability Contrast Screen Target Renamed Dark Figma Insight Retired Gym Promotion".split(" "));
+const GRAPH_MAX_NODES = 1500;
+// The map is recomputed only when the stores change (it takes seconds on a 5k-memory store): keyed per viewer.
+const graphCache = new Map<string, Promise<unknown>>();
+const mt = (f: string) => { try { return statSync(f).mtimeMs; } catch { return 0; } };
+function graphCached(cfg: Config, user: string, cm?: RouteContext["cm"], viewer?: Viewer) {
+  const d = cfg.dataDir, key = [user, viewer?.id ?? "", viewer?.admin ? 1 : 0, ...["memory.db", "memory.db-wal", "entities.db", "entities.db-wal", `insights.${user}.json`].map((f) => mt(join(d, f)))].join("|");
+  let p = graphCache.get(key);
+  if (!p) { if (graphCache.size > 64) graphCache.clear(); p = graph(cfg, user, cm, viewer); graphCache.set(key, p); p.catch(() => graphCache.delete(key)); }
+  return p;
+}
+const clipText = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 export async function graph(cfg: Config, user: string, cm?: RouteContext["cm"], viewer?: Viewer) {
   const vis = cm ? await cm.visibleMemoryIds(viewer) : null;
-  const rs = vis ? allRows(cfg, user).filter((r) => vis.has(r.lesson_id)) : allRows(cfg, user);
+  const rs0 = vis ? allRows(cfg, user).filter((r) => vis.has(r.lesson_id)) : allRows(cfg, user);
+  // Large stores (a whole ingested repo is ~5k memories) made the map 13 MB and pinned the CPU: cap the nodes,
+  // preferring file and directory summaries (ingest kind-file / kind-dir), then the newest of the rest.
+  const overview = (r: { trigger?: string | null }) => /\bkind-(file|dir)\b/.test(String(r.trigger ?? ""));
+  const rs = rs0.length <= GRAPH_MAX_NODES ? rs0
+    : [...rs0.filter(overview), ...rs0.filter((r) => !overview(r)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))].slice(0, GRAPH_MAX_NODES);
   const insights = visibleInsights(readInsights(cfg, user).insights, vis);
   const insByMem = new Map(insights.filter((i) => i.memoryId).map((i) => [i.memoryId!, i]));
   const secEvidence = new Set(insights.filter((i) => i.kind === "security" && i.status !== "retired").flatMap((i) => i.evidence));
@@ -127,7 +143,7 @@ export async function graph(cfg: Config, user: string, cm?: RouteContext["cm"], 
     const tags = String(r.trigger ?? "").split(/\s+/);
     const ins = insByMem.get(r.lesson_id);
     const type = ins ? (ins.kind === "security" ? "security" : "insight") : r.status === "replaced" ? "superseded" : tags.includes("agent-run") ? "agent-run" : tags.includes("web") ? "web" : secEvidence.has(r.lesson_id) ? "security-flag" : "memory";
-    return { id: r.lesson_id, text: r.text, type, createdAt: r.created_at, status: r.status, tags, confidence: ins?.confidence ?? null, kind: ins?.kind ?? null, severity: ins?.severity ?? null, insightStatus: ins?.status ?? null };
+    return { id: r.lesson_id, text: rs0.length > GRAPH_MAX_NODES ? clipText(r.text, 400) : r.text, type, createdAt: r.created_at, status: r.status, tags, confidence: ins?.confidence ?? null, kind: ins?.kind ?? null, severity: ins?.severity ?? null, insightStatus: ins?.status ?? null };
   });
   const ids = new Set(nodes.map((n) => n.id));
   const edges: { from: string; to: string; type: string; label?: string; w?: number }[] = [];
@@ -177,6 +193,6 @@ export const reflectRoutes: Route[] = [
     const r = readInsights(cfg, user); const text = new Map(allRows(cfg, user).filter((x) => !vis || vis.has(x.lesson_id)).map((x) => [x.lesson_id, x.text]));
     return { ...r, insights: visibleInsights(r.insights, vis).map((i) => ({ ...i, evidenceText: i.evidence.map((id) => ({ id, text: text.get(id) ?? "(deleted)" })) })) };
   } },
-  { method: "GET", path: "/api/demo/graph", handle: ({ cfg, user, cm, viewer }: RouteContext) => graph(cfg, user, cm, viewer) },
+  { method: "GET", path: "/api/demo/graph", handle: ({ cfg, user, cm, viewer }: RouteContext) => graphCached(cfg, user, cm, viewer) },
 ];
 export const hasInsights = (cfg: Config, user: string) => existsSync(insightFile(cfg, user));

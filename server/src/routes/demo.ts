@@ -353,7 +353,7 @@ function localEmbed() {
 }
 const toI8 = (v: Float32Array) => Buffer.from(Int8Array.from(v, (x) => Math.max(-127, Math.min(127, Math.round(x * 127)))).buffer).toString("base64");
 let localBusy: Promise<unknown> | null = null;
-async function localIndex(cfg: Config, user: string, extra: { lesson_id: string; text: string }[] = []) {
+export async function localIndex(cfg: Config, user: string, extra: { lesson_id: string; text: string }[] = []) {
   const file = join(cfg.dataDir, `local-emb.${user}.json`);
   let idx: { model: string; dims: number; items: Record<string, { h: string; v: string }> } = { model: LOCAL_MODEL, dims: LOCAL_DIMS, items: {} };
   try { const j = JSON.parse(readFileSync(file, "utf8")); if (j.model === LOCAL_MODEL && j.dims === LOCAL_DIMS) idx = j; } catch { /* new */ }
@@ -385,7 +385,7 @@ let localVecs: { key: string; ids: string[]; M: Float32Array } | null = null;
 const semLat: number[] = [];
 const pctl = (xs: number[], p: number) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.ceil((p / 100) * s.length) - 1)]!; };
 /** Entity profile texts (name, aliases, type, key fields) searched alongside memories. */
-const entityDocs = (cm: RouteContext["cm"]) => { try { return cm.entities.list({ limit: 2000 }).map((e) => ({ lesson_id: e.id, text: cm.entities.profileText(e.id) })); } catch { return []; } };
+export const entityDocs = (cm: RouteContext["cm"]) => { try { return cm.entities.list({ limit: 2000 }).map((e) => ({ lesson_id: e.id, text: cm.entities.profileText(e.id) })); } catch { return []; } };
 const mtime = (p: string) => (existsSync(p) ? statSync(p).mtimeMs : 0);
 async function localSemantic({ cm, cfg, user, query, viewer }: RouteContext) {
   const q = String(query.get("q") ?? "").trim().toLowerCase().slice(0, 300);
@@ -430,7 +430,8 @@ export const demoRoutes: Route[] = [
       const ms = Math.round(performance.now() - t0);
       // pre-warm likely filter queries in the background: sample questions, insight titles, entity names, kinds
       // keep the local nomic model and the item vectors warm for the server semantic path
-      void localSemantic({ cfg, user, query: new URLSearchParams({ q: "warm up" }) } as RouteContext).catch(() => undefined);
+      // (no local index build here: on a store of thousands of memories it embeds every item in-process and blocks
+      // the event loop for minutes; build it out of process with scripts/local-index.ts)
       return { warmed: !!emb, ms, questions: SAMPLE_QUESTIONS.length };
     },
   },

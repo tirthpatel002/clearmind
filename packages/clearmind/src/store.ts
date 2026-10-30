@@ -68,6 +68,8 @@ export interface RecallEvidence {
 
 /** Above this many memories, insights compute in the background and a stale result is served. */
 const INSIGHTS_SYNC_LIMIT = 2000;
+/** Above this many facts insights are skipped (see insightsAll). */
+const INSIGHTS_MAX_FACTS = 3000;
 /** Max model calls per titling pass. */
 const MAX_TITLE_CALLS = 20;
 const AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -364,13 +366,18 @@ export class Clearmind {
    */
   async visibleEntityIds(viewer?: Viewer): Promise<Set<string> | null> {
     if (fullAccess(viewer)) return null;
-    const db = await this.entDb(), [w, p] = this.memVis(viewer, "m.memory_id"), pr = principalsOf(viewer!);
-    const rows = db.prepare(`SELECT e.id FROM ent.entities e WHERE e.user_id=? AND (
-        EXISTS (SELECT 1 FROM cm_acl a WHERE a.item_kind='entity' AND a.item_id=e.id AND a.principal IN (?,?))
-        OR (NOT EXISTS (SELECT 1 FROM cm_acl a WHERE a.item_kind='entity' AND a.item_id=e.id)
-          AND EXISTS (SELECT 1 FROM ent.memory_entities m JOIN lessons l ON l.lesson_id=m.memory_id AND l.namespace=? AND l.user_id=? AND l.agent_id=?
-            WHERE m.entity_id=e.id AND ${w})))`).all(this.userId, ...pr, ...this.w, ...p) as any[];
-    return new Set(rows.map((r) => r.id as string));
+    // Same rule as before (explicit entity acl wins; else visible when a visible memory mentions it), evaluated in JS
+    // from the visible memory ids: the correlated SQL form took ~30 s per call on a 5k-memory / 5k-entity store.
+    const db = await this.entDb(), pr = new Set(principalsOf(viewer!)), vm = await this.visibleMemoryIds(viewer);
+    const acl = new Map<string, boolean>();
+    for (const r of db.prepare(`SELECT item_id, principal FROM cm_acl WHERE item_kind='entity'`).all() as any[]) acl.set(r.item_id, (acl.get(r.item_id) ?? false) || pr.has(r.principal));
+    const out = new Set<string>(), mine = new Set((db.prepare(`SELECT id FROM ent.entities WHERE user_id=?`).all(this.userId) as any[]).map((r) => r.id as string));
+    for (const id of mine) if (acl.get(id)) out.add(id);
+    for (const r of db.prepare(`SELECT entity_id, memory_id FROM ent.memory_entities`).all() as any[]) {
+      if (!mine.has(r.entity_id) || acl.has(r.entity_id) || out.has(r.entity_id)) continue;
+      if (!vm || vm.has(r.memory_id)) out.add(r.entity_id);
+    }
+    return out;
   }
   private entAttached = false;
   private async entDb(): Promise<DatabaseSync> {
@@ -819,6 +826,9 @@ export class Clearmind {
 
   private async insightsAll(o: { wait?: boolean } = {}): Promise<Insights & { stale: boolean }> {
     const sig = await this.signature();
+    // patterns() is synchronous CPU work that grows superlinearly (36 s on a 5k-memory ingested repo) and blocks the
+    // server's event loop; above the hard cap insights are not computed at all.
+    if (Number(sig.split("|")[0]) > INSIGHTS_MAX_FACTS) return { conflicts: [], patterns: [], computedAt: "", factCount: Number(sig.split("|")[0]), stale: false };
     if (this.insightCache?.sig === sig) return { ...this.insightCache.value, stale: false };
     if (!this.insightJob) {
       this.insightJob = (async () => {
