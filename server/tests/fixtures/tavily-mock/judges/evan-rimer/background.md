@@ -1,11 +1,13 @@
 ---
 question: "What is publicly known about Evan Rimer's professional work as Forward Deployed Engineer at Tavily?"
 query: "\"Evan Rimer\" Tavily Forward Deployed Engineer"
-fetchedAt: "2026-10-30T14:04:01.766Z"
+fetchedAt: "2026-10-30T14:15:12.584Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Evan Rimer"
 subjectRole: "Forward Deployed Engineer, Tavily"
@@ -19,7 +21,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Evan Rimer" Tavily Forward Deployed Engineer` (Tavily basic search, fetched 2026-10-30T14:04:01.766Z)
+Query: `"Evan Rimer" Tavily Forward Deployed Engineer` (Tavily basic search, fetched 2026-10-30T14:15:12.584Z)
+
+
 
 ## Answer
 
@@ -32,7 +36,7 @@ MOCK answer for "What is publicly known about Evan Rimer's professional work as 
 - URL: <https://example.com/mock/judges/evan-rimer/background/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Evan Rimer" Tavily Forward Deployed Engineer". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Evan Rimer" Tavily Forward Deployed Engineer". Mentions Evan Rimer at Tavily. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/evan-rimer/background](https://example.com/mock/judges/evan-rimer/background/1)
 
@@ -40,6 +44,6 @@ Source: [MOCK result 1 for judges/evan-rimer/background](https://example.com/moc
 
 - URL: <https://example.com/mock/judges/evan-rimer/background/2>
 
-MOCK content 2: placeholder snippet for query ""Evan Rimer" Tavily Forward Deployed Engineer". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Evan Rimer" Tavily Forward Deployed Engineer". Mentions Evan Rimer at Tavily. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/evan-rimer/background](https://example.com/mock/judges/evan-rimer/background/2)

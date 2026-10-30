@@ -1,11 +1,13 @@
 ---
 question: "What is publicly known about Rob Spectre's professional work as Developer Relations Advisor at Nebius?"
 query: "\"Rob Spectre\" Nebius Developer Relations Advisor"
-fetchedAt: "2026-10-30T14:04:01.766Z"
+fetchedAt: "2026-10-30T14:15:12.583Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Rob Spectre"
 subjectRole: "Developer Relations Advisor, Nebius"
@@ -19,7 +21,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Rob Spectre" Nebius Developer Relations Advisor` (Tavily basic search, fetched 2026-10-30T14:04:01.766Z)
+Query: `"Rob Spectre" Nebius Developer Relations Advisor` (Tavily basic search, fetched 2026-10-30T14:15:12.583Z)
+
+
 
 ## Answer
 
@@ -32,7 +36,7 @@ MOCK answer for "What is publicly known about Rob Spectre's professional work as
 - URL: <https://example.com/mock/judges/rob-spectre/background/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Rob Spectre" Nebius Developer Relations Advisor". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Rob Spectre" Nebius Developer Relations Advisor". Mentions Rob Spectre at Nebius. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/rob-spectre/background](https://example.com/mock/judges/rob-spectre/background/1)
 
@@ -40,6 +44,6 @@ Source: [MOCK result 1 for judges/rob-spectre/background](https://example.com/mo
 
 - URL: <https://example.com/mock/judges/rob-spectre/background/2>
 
-MOCK content 2: placeholder snippet for query ""Rob Spectre" Nebius Developer Relations Advisor". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Rob Spectre" Nebius Developer Relations Advisor". Mentions Rob Spectre at Nebius. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/rob-spectre/background](https://example.com/mock/judges/rob-spectre/background/2)

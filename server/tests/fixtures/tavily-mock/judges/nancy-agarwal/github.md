@@ -1,12 +1,14 @@
 ---
 question: "What is Nancy Agarwal's public GitHub profile and notable public repositories?"
-query: "\"Nancy Agarwal\" NVIDIA"
-fetchedAt: "2026-10-30T14:04:01.759Z"
+query: "\"Nancy Agarwal\" NVIDIA Senior Software Engineer"
+fetchedAt: "2026-10-30T14:15:12.579Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["github.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Nancy Agarwal"
 subjectRole: "Senior Software Engineer, NVIDIA"
@@ -20,7 +22,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Nancy Agarwal" NVIDIA` (Tavily basic search, fetched 2026-10-30T14:04:01.759Z)
+Query: `"Nancy Agarwal" NVIDIA Senior Software Engineer` (Tavily basic search, fetched 2026-10-30T14:15:12.579Z)
+
+
 
 ## Answer
 
@@ -33,7 +37,7 @@ MOCK answer for "What is Nancy Agarwal's public GitHub profile and notable publi
 - URL: <https://github.com/mock/judges/nancy-agarwal/github/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Nancy Agarwal" NVIDIA". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Nancy Agarwal" NVIDIA Senior Software Engineer". Mentions Nancy Agarwal at NVIDIA. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/nancy-agarwal/github](https://github.com/mock/judges/nancy-agarwal/github/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/nancy-agarwal/github](https://github.com/mock/
 
 - URL: <https://github.com/mock/judges/nancy-agarwal/github/2>
 
-MOCK content 2: placeholder snippet for query ""Nancy Agarwal" NVIDIA". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Nancy Agarwal" NVIDIA Senior Software Engineer". Mentions Nancy Agarwal at NVIDIA. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/nancy-agarwal/github](https://github.com/mock/judges/nancy-agarwal/github/2)

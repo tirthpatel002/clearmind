@@ -1,11 +1,12 @@
 ---
 question: "How is the Nebius x NVIDIA Global AI Hackathon judged?"
-query: "Nebius NVIDIA Global AI Hackathon judging criteria rules"
-fetchedAt: "2026-10-30T14:04:01.758Z"
+query: "Nebius NVIDIA Global AI Hackathon judging criteria"
+fetchedAt: "2026-10-30T14:15:12.577Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["devpost.com"]
+mode: search
 creditsUsed: 0
 group: sponsors
 visibleTo: ["workspace"]
@@ -18,7 +19,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `Nebius NVIDIA Global AI Hackathon judging criteria rules` (Tavily basic search, fetched 2026-10-30T14:04:01.758Z)
+Query: `Nebius NVIDIA Global AI Hackathon judging criteria` (Tavily basic search, fetched 2026-10-30T14:15:12.577Z)
+
+
 
 ## Answer
 
@@ -31,7 +34,7 @@ MOCK answer for "How is the Nebius x NVIDIA Global AI Hackathon judged?". This i
 - URL: <https://devpost.com/mock/sponsors/hackathon-judging/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query "Nebius NVIDIA Global AI Hackathon judging criteria rules". Not real Tavily output.
+MOCK content 1: placeholder snippet for query "Nebius NVIDIA Global AI Hackathon judging criteria". Not real Tavily output.
 
 Source: [MOCK result 1 for sponsors/hackathon-judging](https://devpost.com/mock/sponsors/hackathon-judging/1)
 
@@ -39,6 +42,6 @@ Source: [MOCK result 1 for sponsors/hackathon-judging](https://devpost.com/mock/
 
 - URL: <https://devpost.com/mock/sponsors/hackathon-judging/2>
 
-MOCK content 2: placeholder snippet for query "Nebius NVIDIA Global AI Hackathon judging criteria rules". Not real Tavily output.
+MOCK content 2: placeholder snippet for query "Nebius NVIDIA Global AI Hackathon judging criteria". Not real Tavily output.
 
 Source: [MOCK result 2 for sponsors/hackathon-judging](https://devpost.com/mock/sponsors/hackathon-judging/2)

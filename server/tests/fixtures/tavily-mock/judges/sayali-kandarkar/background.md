@@ -1,11 +1,13 @@
 ---
 question: "What is publicly known about Sayali Kandarkar's professional work as Senior AI/ML Engineer at NVIDIA?"
 query: "\"Sayali Kandarkar\" NVIDIA Senior AI/ML Engineer"
-fetchedAt: "2026-10-30T14:04:01.775Z"
+fetchedAt: "2026-10-30T14:15:12.604Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Sayali Kandarkar"
 subjectRole: "Senior AI/ML Engineer, NVIDIA"
@@ -19,7 +21,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Sayali Kandarkar" NVIDIA Senior AI/ML Engineer` (Tavily basic search, fetched 2026-10-30T14:04:01.775Z)
+Query: `"Sayali Kandarkar" NVIDIA Senior AI/ML Engineer` (Tavily basic search, fetched 2026-10-30T14:15:12.604Z)
+
+
 
 ## Answer
 
@@ -32,7 +36,7 @@ MOCK answer for "What is publicly known about Sayali Kandarkar's professional wo
 - URL: <https://example.com/mock/judges/sayali-kandarkar/background/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Sayali Kandarkar" NVIDIA Senior AI/ML Engineer". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Sayali Kandarkar" NVIDIA Senior AI/ML Engineer". Mentions Sayali Kandarkar at NVIDIA. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/sayali-kandarkar/background](https://example.com/mock/judges/sayali-kandarkar/background/1)
 
@@ -40,6 +44,6 @@ Source: [MOCK result 1 for judges/sayali-kandarkar/background](https://example.c
 
 - URL: <https://example.com/mock/judges/sayali-kandarkar/background/2>
 
-MOCK content 2: placeholder snippet for query ""Sayali Kandarkar" NVIDIA Senior AI/ML Engineer". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Sayali Kandarkar" NVIDIA Senior AI/ML Engineer". Mentions Sayali Kandarkar at NVIDIA. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/sayali-kandarkar/background](https://example.com/mock/judges/sayali-kandarkar/background/2)

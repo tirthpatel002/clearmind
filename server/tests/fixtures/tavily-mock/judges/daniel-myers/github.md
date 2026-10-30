@@ -1,12 +1,14 @@
 ---
 question: "What is Daniel Myers's public GitHub profile and notable public repositories?"
-query: "\"Daniel Myers\" Nebius"
-fetchedAt: "2026-10-30T14:04:01.772Z"
+query: "\"Daniel Myers\" Nebius Director of Developer Relations"
+fetchedAt: "2026-10-30T14:15:12.596Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["github.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Daniel Myers"
 subjectRole: "Director of Developer Relations, Nebius"
@@ -20,7 +22,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Daniel Myers" Nebius` (Tavily basic search, fetched 2026-10-30T14:04:01.772Z)
+Query: `"Daniel Myers" Nebius Director of Developer Relations` (Tavily basic search, fetched 2026-10-30T14:15:12.596Z)
+
+
 
 ## Answer
 
@@ -33,7 +37,7 @@ MOCK answer for "What is Daniel Myers's public GitHub profile and notable public
 - URL: <https://github.com/mock/judges/daniel-myers/github/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Daniel Myers" Nebius". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Daniel Myers" Nebius Director of Developer Relations". Mentions Daniel Myers at Nebius. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/daniel-myers/github](https://github.com/mock/judges/daniel-myers/github/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/daniel-myers/github](https://github.com/mock/j
 
 - URL: <https://github.com/mock/judges/daniel-myers/github/2>
 
-MOCK content 2: placeholder snippet for query ""Daniel Myers" Nebius". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Daniel Myers" Nebius Director of Developer Relations". Mentions Daniel Myers at Nebius. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/daniel-myers/github](https://github.com/mock/judges/daniel-myers/github/2)

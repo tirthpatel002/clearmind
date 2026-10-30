@@ -1,12 +1,14 @@
 ---
 question: "What is Dhruv Diddi's public GitHub profile and notable public repositories?"
-query: "\"Dhruv Diddi\" Nebius"
-fetchedAt: "2026-10-30T14:04:01.775Z"
+query: "\"Dhruv Diddi\" Nebius Principal - Physical AI Ecosystem"
+fetchedAt: "2026-10-30T14:15:12.603Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["github.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "Dhruv Diddi"
 subjectRole: "Principal - Physical AI Ecosystem, Nebius"
@@ -20,7 +22,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"Dhruv Diddi" Nebius` (Tavily basic search, fetched 2026-10-30T14:04:01.775Z)
+Query: `"Dhruv Diddi" Nebius Principal - Physical AI Ecosystem` (Tavily basic search, fetched 2026-10-30T14:15:12.603Z)
+
+
 
 ## Answer
 
@@ -33,7 +37,7 @@ MOCK answer for "What is Dhruv Diddi's public GitHub profile and notable public 
 - URL: <https://github.com/mock/judges/dhruv-diddi/github/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""Dhruv Diddi" Nebius". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""Dhruv Diddi" Nebius Principal - Physical AI Ecosystem". Mentions Dhruv Diddi at Nebius. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/dhruv-diddi/github](https://github.com/mock/judges/dhruv-diddi/github/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/dhruv-diddi/github](https://github.com/mock/ju
 
 - URL: <https://github.com/mock/judges/dhruv-diddi/github/2>
 
-MOCK content 2: placeholder snippet for query ""Dhruv Diddi" Nebius". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""Dhruv Diddi" Nebius Principal - Physical AI Ecosystem". Mentions Dhruv Diddi at Nebius. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/dhruv-diddi/github](https://github.com/mock/judges/dhruv-diddi/github/2)

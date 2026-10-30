@@ -1,12 +1,14 @@
 ---
 question: "What is AbdulMajed Raja's public GitHub profile and notable public repositories?"
-query: "\"AbdulMajed Raja\" Nebius"
-fetchedAt: "2026-10-30T14:04:01.765Z"
+query: "\"AbdulMajed Raja\" Nebius Developer Relations Lead (Token Factory) - APJ"
+fetchedAt: "2026-10-30T14:15:12.582Z"
 tool: tavily
 searchDepth: basic
 searchTopic: general
 includeDomains: ["github.com"]
+mode: search
 creditsUsed: 0
+match: confident
 group: judges
 subject: "AbdulMajed Raja"
 subjectRole: "Developer Relations Lead (Token Factory) - APJ, Nebius"
@@ -20,7 +22,9 @@ sources:
 
 > **MOCK DATA** generated offline for testing. Not real Tavily output; do not treat as fact.
 
-Query: `"AbdulMajed Raja" Nebius` (Tavily basic search, fetched 2026-10-30T14:04:01.765Z)
+Query: `"AbdulMajed Raja" Nebius Developer Relations Lead (Token Factory) - APJ` (Tavily basic search, fetched 2026-10-30T14:15:12.582Z)
+
+
 
 ## Answer
 
@@ -33,7 +37,7 @@ MOCK answer for "What is AbdulMajed Raja's public GitHub profile and notable pub
 - URL: <https://github.com/mock/judges/abdulmajed-raja/github/1>
 - Published: 2026-01-01
 
-MOCK content 1: placeholder snippet for query ""AbdulMajed Raja" Nebius". Not real Tavily output.
+MOCK content 1: placeholder snippet for query ""AbdulMajed Raja" Nebius Developer Relations Lead (Token Factory) - APJ". Mentions AbdulMajed Raja at Nebius. Not real Tavily output.
 
 Source: [MOCK result 1 for judges/abdulmajed-raja/github](https://github.com/mock/judges/abdulmajed-raja/github/1)
 
@@ -41,6 +45,6 @@ Source: [MOCK result 1 for judges/abdulmajed-raja/github](https://github.com/moc
 
 - URL: <https://github.com/mock/judges/abdulmajed-raja/github/2>
 
-MOCK content 2: placeholder snippet for query ""AbdulMajed Raja" Nebius". Not real Tavily output.
+MOCK content 2: placeholder snippet for query ""AbdulMajed Raja" Nebius Developer Relations Lead (Token Factory) - APJ". Mentions AbdulMajed Raja at Nebius. Not real Tavily output.
 
 Source: [MOCK result 2 for judges/abdulmajed-raja/github](https://github.com/mock/judges/abdulmajed-raja/github/2)
