@@ -133,6 +133,32 @@ async function ask(ctx: RouteContext) {
   if (w.balanceUsd < MIN_BALANCE_USD) {
     return { refused: true, reason: `Your demo credit balance ($${w.balanceUsd.toFixed(4)}) is below the $${MIN_BALANCE_USD.toFixed(3)} needed for one answer. Top up demo credits to continue.`, wallet: w };
   }
+  // chat edit: "Update: ...", "Correction: ...", "Actually, ..." rewrites the closest memory the user can see.
+  // The old text is kept as a replaced version, so it shows under Memory > Changes.
+  const edit = /^\s*(?:update|correction|correct|edit|change|actually)\b\s*[:,\-]?\s*([\s\S]+)$/i.exec(q);
+  if (edit && edit[1]!.trim().length >= 12) {
+    const newText = edit[1]!.trim();
+    useModel();
+    const te0 = performance.now();
+    const ev0 = await cm.recallWithEvidence(newText, 3, undefined, viewer);
+    const target = ev0.memories[0];
+    if (target) {
+      const nu = await cm.update(target.id, newText, { viewer });
+      audit(cfg, user, "chat-edit", [target.id, nu.id], {});
+      const body0 = target.text.includes("\n") ? target.text.slice(target.text.indexOf("\n") + 1).trim() : target.text;
+      const old = body0.length > 220 ? body0.slice(0, 220) + "…" : body0;
+      const ms = Math.round(performance.now() - te0);
+      return {
+        q, answer: `Updated your memory. The old version is kept as history under Memory > Changes.\n\nBefore: ${old}\n\nNow: ${newText}`,
+        abstained: false, lowConfidence: false, research: null, reason: null, derived: [], edited: { from: target.id, to: nu.id },
+        cited: [{ id: nu.id, text: nu.text }], shown: [{ id: nu.id, text: nu.text, createdAt: nu.createdAt, score: null }],
+        evidence: ev0.evidence, threshold: 0, embedMs: 0, recallMs: ms, answerMs: 0, readerMs: null,
+        tokens: { sent: 0, completion: 0, fullHistory: 0, memories: 0 },
+        cost: { usd: 0, fullUsd: 0, savedPct: null, lines: [], embedUsd: 0, readerUsd: 0 },
+        session: w.sessions[session] ?? { usd: 0, fullUsd: 0, answers: 0 }, wallet: w, learning: null,
+      };
+    }
+  }
   useModel();
   const off = ledgerSize(cfg);
   // embed the question first (memoised in the provider) so recall timing is search only

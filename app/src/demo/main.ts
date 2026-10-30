@@ -537,7 +537,7 @@ async function ask(q: string) {
   try {
     const slow = setTimeout(() => { if (slot.pending) { slot.slow = true; if (S.tab === "chat") void render(); } }, 2500);
     try { slot.r = await api("/api/demo/ask", { q, session: S.session }); } finally { clearTimeout(slow); }
-    if (slot.r.research?.ran) S.graph = null; // new memories: the map reloads
+    if (slot.r.research?.ran || slot.r.edited) S.graph = null; // new memories: the map reloads
     if (S.cfg) S.cfg.wallet = slot.r.wallet; renderWallet(slot.r.wallet);
     for (const m of slot.r.shown ?? []) S.texts.set(m.id, m.text);
     S.lastUsed = (slot.r.shown ?? []).map((m: any) => m.id);
