@@ -2,7 +2,8 @@
 // Default is a dry run that prints the plan and cost estimate; writing needs --run (uses the store's
 // configured embedder/LLM, i.e. Nebius when the key is set; add --offline to stay local).
 // Usage: tsx scripts/seed-build.ts --dir <dataDir> --user <id> [--root .] [--since <sha>] [--run] [--offline]
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { writeRoster } from "./judges-roster.ts";
 import { Clearmind, fmtIngest, ingestPath, loadConfig, validUserId } from "@clearmind/core";
 
 const arg = (k: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : undefined; };
@@ -15,6 +16,8 @@ const price = arg("price") ? Number(arg("price")) : null;
 
 if (run && (!dir || !validUserId(user))) { console.error("usage: seed-build.ts --dir <dataDir> --user <id> [--run]"); process.exit(2); }
 
+// workspace-visible judge roster from the (per-judge private) tavily files, so every viewer can answer "who are the judges?"
+const roster = writeRoster(join(root, "tavily")); if (roster) console.log(`roster: ${roster}`);
 const plan = await ingestPath(null, root, { dryRun: true, since, skipMock: true });
 console.log(`plan (${root}):`);
 console.log(fmtIngest(plan, true));
