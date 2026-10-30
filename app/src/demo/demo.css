@@ -117,3 +117,9 @@ details.ins.semonly>summary::after{content:"semantic";font-size:10.5px;color:#7a
 .rline{font-size:12px;margin-top:8px;color:var(--ink2)}.rline a{color:var(--accentInk)}.rline.limit{color:var(--butterInk);background:var(--butter);border-radius:10px;padding:6px 10px;font-weight:600}
 .rbar{height:6px;border-radius:4px;background:var(--line);margin:4px 0 10px}.rbar i{display:block;height:100%;border-radius:4px;background:var(--accent)}
 .credits.rcred{background:var(--accentSoft);color:var(--accentInk)}
+
+/* memory rows: real content first (2 lines), muted source chip */
+.mbody{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
+.mchip{display:inline-block;margin-top:2px;padding:1px 7px;border-radius:999px;font-size:11px;color:var(--ink2);background:var(--line);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+#drawer .mbody{-webkit-line-clamp:4;line-clamp:4}
+.mstat{margin:8px 2px}

@@ -3,6 +3,7 @@
 import "./demo.css";
 import "./tenancy.css";
 import { initTenancy } from "./tenancy.js";
+import { splitMem, memLine } from "./memtext.js";
 import { mountMap, sourceOf, linksOf, type MapHandle, type Layout } from "./map.js";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
@@ -21,6 +22,9 @@ async function api(path: string, body?: unknown): Promise<any> {
   return j;
 }
 
+const chipHtml = (raw: unknown) => { const c = splitMem(raw).chip; return c ? ` <span class="mchip" title="${esc(c)}">${esc(c)}</span>` : ""; };
+/** Row text: the real content first (clamped by CSS), then a muted source chip. Full text stays in the detail view. */
+const memHtml = (raw: unknown) => `<span class="mbody">${esc(splitMem(raw).body)}</span>${chipHtml(raw)}`;
 let reauthing = false;
 /** Session lost (e.g. server restart): reopen the "Continue as" picker instead of leaving the UI stuck. */
 function reauth() { if (reauthing) return; reauthing = true; void initTenancy(API_BASE, true).finally(() => { reauthing = false; }); }
@@ -136,6 +140,7 @@ const matches = (q: Q, hay: string, attrs: Record<string, string | null | undefi
   q.words.every((w) => hay.includes(w)) && q.fields.every(([k, v]) => (attrs[k] ?? "").toLowerCase().startsWith(v));
 
 function applyFilter() {
+  if (S.tab === "memory" && S.mem === "list") return;
   const t0 = performance.now();
   const q = parseQ(S.q[S.tab] ?? ""), empty = !q.words.length && !q.fields.length;
   const key = q.words.join(" "), sem = key && SEM.res?.key === key ? SEM.res : null;
@@ -201,7 +206,7 @@ function renderWallet(w = S.cfg?.wallet) {
   p.innerHTML = `Demo credits <b>$${num(w.balanceUsd).toFixed(4)}</b>`;
   p.classList.toggle("low", num(w.balanceUsd) < (S.cfg?.minBalance ?? 0.005));
 }
-function go(t: Tab) { if (t !== S.tab) { S.tab = t; renderTabs(); void render(); } }
+function go(t: Tab) { if (t !== S.tab) { stopList(); S.tab = t; renderTabs(); void render(); } }
 
 // ---------- chat ----------
 function answerHtml(r: any) {
@@ -209,7 +214,7 @@ function answerHtml(r: any) {
   if (r.abstained) return `<p>I don't know. <span class="k">Nothing in memory supports an answer.</span></p>`;
   const marks: string[] = [];
   const text = String(r.answer ?? "").replace(/\s*\[([0-9A-Z]{10,})\]/g, (_: string, id: string) => { marks.push(id); return `\u0000${marks.length - 1}\u0000`; });
-  return md(text).replace(/\u0000(\d+)\u0000/g, (_, k) => { const id = marks[Number(k)]!; return `<sup class="mk" data-mem="${id}" title="${esc(S.texts.get(id) ?? "memory")}">${n.get(id) ?? "&middot;"}</sup>`; });
+  return md(text).replace(/\u0000(\d+)\u0000/g, (_, k) => { const id = marks[Number(k)]!; return `<sup class="mk" data-mem="${id}" title="${esc(S.texts.has(id) ? memLine(S.texts.get(id), 300) + (splitMem(S.texts.get(id)).chip ? ` (${splitMem(S.texts.get(id)).chip})` : "") : "memory")}">${n.get(id) ?? "&middot;"}</sup>`; });
 }
 function webSources(r: any) {
   const seen = new Set<string>(), xs = (r.cited ?? []).map((c: any) => sourceOf(c.text)).filter((s: any) => s && !seen.has(s.url) && seen.add(s.url));
@@ -305,30 +310,83 @@ function listBody(x: any) {
     return `<span class="k">entity${x.kind ? ` · ${esc(x.kind)}` : ""}</span> <b>${esc(x.name)}</b>${(x.text ?? "").includes(": ") ? ` ${esc(x.text.slice(x.text.indexOf(": ") + 2))}` : ""} <span class="k">${x.memoryCount ?? 0} memories</span>${prof ? ` <span class="pl">${prof}</span>` : ""}`;
   }
   const s = x.type === "web" ? sourceOf(x.text) : null;
-  return `<span class="k">${ist(x.createdAt)}</span> ${s ? `<span class="badge web" title="Public web data gathered by the demo seeder via Tavily: sources linked">web</span> ` : ""}${esc(x.text)}${s ? ` <a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}`;
+  return `<span class="k">${ist(x.createdAt)}</span> ${s ? `<span class="badge web" title="Public web data gathered by the demo seeder via Tavily: sources linked">web</span> ` : ""}${memHtml(x.text)}${s ? ` <a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}`;
 }
 async function viewMemory() {
   if (S.mem === "map") return memHead() + `<div class="mapwrap" id="mapwrap"><canvas id="mapc"></canvas><canvas id="mapo"></canvas><div class="hcard" id="hcard"></div><button class="mapreset" id="mapreset" title="Reset view (or double-click empty space)">Reset view</button>
       <div class="legend">${LEGEND.filter((t) => t !== "web" && t !== "entity" || S.graph?.nodes.some((x: any) => x.type === t)).map((t) => `<span><i style="background:${TYPE_COL[t]}"></i>${t}</span>`).join("")}</div></div>`;
-  if (S.mem === "list") {
-    if (!S.graph) await loadGraph();
-    const order: number[] = S.graph.nodes.map((_: any, i: number) => i).sort((a: number, b: number) => (S.graph.nodes[a].createdAt < S.graph.nodes[b].createdAt ? 1 : -1));
-    const all = S.showAll || !!(S.q.memory ?? "").trim();
-    // rows past the first page are rendered only when filtering or after "Show all", so search still covers everything
-    const xs = all ? order : order.slice(0, LIST_PAGE);
-    const clip = (t: string) => (t.length > 600 ? t.slice(0, 600) + "…" : t);
-    return memHead() + `<div class="list">${xs.map((i: number) => { const x = S.graph.nodes[i]; return `<div class="li" data-id="${esc(x.id)}" data-o="${i}" data-f="${esc(S.hay[i] ?? "")}" data-type="${esc(x.type)}" data-kind="${esc(x.kind ?? "")}" data-sev="${esc(x.severity ?? "")}"><i style="background:${TYPE_COL[x.type] ?? "#999"}"></i>${listBody({ ...x, text: clip(x.text) })}</div>`; }).join("")}</div>
-      ${!all && order.length > LIST_PAGE ? `<p><a href="#" class="dlink" data-act="all">Show all ${order.length}</a> <span class="k">(filtering searches all of them)</span></p>` : ""}`;
-  }
+  if (S.mem === "list") return memHead() + `<div class="list" id="mlist"></div><p id="mstat" class="k mstat"><span class="spin">Loading memories<span class="dots"><i></i><i></i><i></i></span></span></p>`;
   if (S.mem === "changed") {
     const r = await api("/api/demo/timeline");
     const ch = (r.changed ?? []).filter((i: any) => i.status === "replaced");
     return memHead() + `<div class="list">${ch.map((i: any, o: number) => `<div class="li chg" data-id="${i.id}" data-o="${o}" data-f="${esc(`${i.text} ${i.replacedByText} ${i.key ?? ""} ${String(i.createdAt ?? "").slice(0, 10)}`.toLowerCase())}"><span class="old"><span class="t">${esc(i.text)}</span></span><span class="arrow"> → </span><b>${esc(i.replacedByText)}</b></div>`).join("") || '<div class="k">No changed facts yet.</div>'}</div>`;
   }
   const p = await api("/api/demo/privacy");
-  return memHead() + `<div class="list">${(p.items ?? []).slice(0, (S.showAll || (S.q.memory ?? "").trim()) ? Infinity : LIST_PAGE).map((m: any, o: number) => { m.sensitive = m.sensitive ?? []; return `<div class="li pv" id="pv-${m.id}" data-id="${m.id}" data-o="${o}" data-f="${esc(`${m.text} ${m.sensitive.join(" ")}`.toLowerCase())}"><span class="t">${esc(m.text)}</span>${m.sensitive.length ? ` <span class="chip warn">${esc(m.sensitive.join(", "))}</span>` : ""}
+  return memHead() + `<div class="list">${(p.items ?? []).slice(0, (S.showAll || (S.q.memory ?? "").trim()) ? Infinity : LIST_PAGE).map((m: any, o: number) => { m.sensitive = m.sensitive ?? []; return `<div class="li pv" id="pv-${m.id}" data-id="${m.id}" data-o="${o}" data-f="${esc(`${m.text} ${m.sensitive.join(" ")}`.toLowerCase())}"><span class="t">${memHtml(m.text)}</span>${m.sensitive.length ? ` <span class="chip warn">${esc(m.sensitive.join(", "))}</span>` : ""}
     <span class="acts">${m.sensitive.length ? `<button class="btn" data-act="redact" data-id="${m.id}">Redact</button>` : ""}<button class="btn" data-act="forget" data-id="${m.id}">Forget</button></span></div>`; }).join("") || '<div class="k">No memories.</div>'}</div>
     ${!(S.showAll || (S.q.memory ?? "").trim()) && (p.items ?? []).length > LIST_PAGE ? `<p><a href="#" class="dlink" data-act="all">Show all ${p.items.length}</a></p>` : ""}`;
+}
+
+// ---------- memory list: streamed in batches (SSE, JSON paging fallback); search always runs on the server over the whole store ----------
+const LS = { seq: 0, es: null as EventSource | null, n: 0, total: null as number | null, timer: 0 as any };
+function stopList() { LS.seq++; LS.es?.close(); LS.es = null; clearTimeout(LS.timer); }
+const memRow = (x: any) => {
+  const type = x.type ?? ((x.tags ?? []).includes("web") || sourceOf(String(x.text ?? "")) ? "web" : "memory");
+  const t = String(x.text ?? x.name ?? ""); const clip = t;
+  return `<div class="li" data-id="${esc(x.id)}"><i style="background:${TYPE_COL[type] ?? "#999"}"></i>${listBody({ ...x, type, text: clip, createdAt: String(x.createdAt ?? "") })}</div>`;
+};
+/** Append items in rAF-sized chunks so the main thread never blocks. */
+function appendRows(my: number, xs: any[]) {
+  const host = document.getElementById("mlist"); if (!host) return;
+  let i = 0;
+  const step = () => { if (my !== LS.seq) return; host.insertAdjacentHTML("beforeend", xs.slice(i, i + 50).map(memRow).join("")); i += 50; if (i < xs.length) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function listStat(html: string, busy = false) {
+  const el = document.getElementById("mstat"); if (el) el.innerHTML = busy ? `<span class="spin">${html}<span class="dots"><i></i><i></i><i></i></span></span>` : html;
+  const c = document.getElementById("count"); if (c) c.innerHTML = `${LS.n}${LS.total != null ? ` of ${LS.total}` : ""} memories`;
+}
+async function startList() {
+  stopList(); const my = LS.seq; LS.n = 0; LS.total = null;
+  const host = document.getElementById("mlist"); if (!host) return; host.innerHTML = "";
+  const q = (S.q.memory ?? "").trim();
+  const got = (xs: any[]) => { if (my !== LS.seq) return; for (const x of xs) if (x?.id) S.texts.set(x.id, x.text); LS.n += xs.length; appendRows(my, xs); };
+  if (q) { // server-side search over the whole (access-filtered) store; never a filter over the loaded batch
+    listStat(`Searching all memories for “${esc(q)}”`, true);
+    try {
+      const r = await api(`/api/memories?q=${encodeURIComponent(q)}&limit=200`); if (my !== LS.seq) return;
+      const xs = r.items ?? []; LS.total = r.total ?? null; got(xs);
+      listStat(xs.length ? `${xs.length}${r.total != null ? ` of ${r.total}` : ""} matches from the whole store (server search)` : `No memories match “${esc(q)}”.`);
+    } catch (e) { if (my === LS.seq) listStat(errBox("search results", e)); }
+    return;
+  }
+  const json = async () => { // fallback: JSON pages of 100, fetched in the background
+    let cursor: any = null, offset = 0;
+    try {
+      for (;;) {
+        const r = await api(`/api/memories?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : `&offset=${offset}`}`); if (my !== LS.seq) return;
+        const xs = r.items ?? []; if (r.total != null) LS.total = r.total; got(xs); offset += xs.length;
+        cursor = r.nextCursor ?? r.cursor ?? null; const more = xs.length > 0 && (r.nextOffset != null || cursor);
+        listStat(more ? `Loaded ${LS.n}${LS.total != null ? ` of ${LS.total}` : ""}` : `Loaded ${LS.n}${LS.total != null ? ` of ${LS.total}` : ""} memories.`, !!more);
+        if (!more) return;
+        if (r.nextOffset != null) offset = r.nextOffset;
+        await new Promise((res) => setTimeout(res, 30));
+      }
+    } catch (e) { if (my === LS.seq) listStat(`Loaded ${LS.n}. ${errBox("more memories", e)}`); }
+  };
+  listStat("Loading memories", true);
+  if (typeof EventSource === "undefined") return void json();
+  let meta = false;
+  const es = (LS.es = new EventSource(API_BASE + "/api/stream/memories", { withCredentials: !!API_BASE }));
+  es.addEventListener("meta", (ev: any) => { meta = true; try { LS.total = JSON.parse(ev.data).total ?? null; } catch {} listStat(`Loaded 0 of ${LS.total ?? "?"}`, true); });
+  es.addEventListener("batch", (ev: any) => { meta = true; try { got(JSON.parse(ev.data).items ?? []); } catch {} listStat(`Loaded ${LS.n}${LS.total != null ? ` of ${LS.total}` : ""}`, true); });
+  es.addEventListener("done", () => { es.close(); if (LS.es === es) LS.es = null; listStat(`Loaded ${LS.n}${LS.total != null ? ` of ${LS.total}` : ""} memories.`); });
+  es.onerror = (ev: any) => {
+    es.close(); if (LS.es === es) LS.es = null; if (my !== LS.seq) return;
+    let msg = ""; try { msg = JSON.parse(ev.data ?? "").message ?? ""; } catch {}
+    if (!meta) void json(); // stream not available (404 / old server): JSON paging
+    else listStat(`Loaded ${LS.n}${LS.total != null ? ` of ${LS.total}` : ""}. <span class="k">Stream stopped${msg ? `: ${esc(msg)}` : ""}.</span> <a href="#" class="dlink" data-act="retry">Retry</a>`);
+  };
 }
 
 // ---------- insights ----------
@@ -341,7 +399,7 @@ function insightCard(i: any) {
   return `<details class="ins ${i.status}" data-id="${i.memoryId ?? ""}" data-o="${S.insOrder.get(i) ?? 0}" data-f="${esc(`${i.statement} ${i.kind} ${i.severity ?? ""} ${i.status}`.toLowerCase())}" data-kind="${i.kind}" data-sev="${i.severity ?? ""}" data-status="${i.status}">
     <summary><span class="kind">${KIND[i.kind] ?? i.kind}</span>${badge}<span class="st">${esc(i.statement)}</span></summary>
     <div class="ev"><div class="k">${i.evidence.length} memories · confidence ${i.confidence} · ${i.status} · ${i.firstSeen.slice(0, 10)} to ${i.lastSeen.slice(0, 10)}</div>
-    <ul>${i.evidenceText.map((e: any) => `<li>${esc(e.text)}</li>`).join("")}</ul></div></details>`;
+    <ul>${i.evidenceText.map((e: any) => `<li>${memHtml(e.text)}</li>`).join("")}</ul></div></details>`;
 }
 async function viewInsights() {
   const r = (S.insights = await api("/api/demo/insights"));
@@ -358,7 +416,7 @@ async function loadLearning() {
   try {
   if (!S.cfg?.learning) { el.innerHTML = '<p class="k">Learning is off in this config.</p>'; return; }
   const r = await api("/api/demo/learning");
-  el.innerHTML = `<table><tr><th>memory</th><th>helpfulness</th><th>used</th><th>co-use links</th></tr>${(r.items ?? []).map((x: any) => `<tr><td>${esc(x.text)}</td><td class="n">${x.helpMean ?? "–"}</td><td class="n">${x.used ?? 0}</td><td class="n">${(x.links ?? []).length}</td></tr>`).join("") || '<tr><td colspan=4 class="k">No usage yet.</td></tr>'}</table>`;
+  el.innerHTML = `<table><tr><th>memory</th><th>helpfulness</th><th>used</th><th>co-use links</th></tr>${(r.items ?? []).map((x: any) => `<tr><td>${esc(memLine(x.text, 160))}${chipHtml(x.text)}</td><td class="n">${x.helpMean ?? "–"}</td><td class="n">${x.used ?? 0}</td><td class="n">${(x.links ?? []).length}</td></tr>`).join("") || '<tr><td colspan=4 class="k">No usage yet.</td></tr>'}</table>`;
   } catch (e) { el.innerHTML = errBox("learning", e); }
 }
 
@@ -405,9 +463,9 @@ async function renderInspectorInner(d: HTMLElement) {
     <div class="kv"><span>embed <b>${sel.embedMs ?? "–"} ms</b></span><span>recall <b>${sel.recallMs ?? "–"} ms</b></span><span>reader <b>${sel.readerMs ?? sel.answerMs ?? "–"} ms</b></span><span>total <b>${num(sel.embedMs) + num(sel.recallMs) + num(sel.answerMs)} ms</b></span></div>
     ${sel.tokens || sel.cost ? `<div class="kv"><span>tokens <b>${num(sel.tokens?.sent).toLocaleString()}</b> vs ${num(sel.tokens?.fullHistory).toLocaleString()} full</span><span>cost <b>${usd(sel.cost?.usd)}</b> vs ${usd(sel.cost?.fullUsd)}</span></div>` : ""}
     ${sel.abstained ? `<p class="k">Abstained: evidence ${num(sel.evidence).toFixed(2)} below threshold ${sel.threshold}.${sel.reason ? " " + esc(sel.reason) : ""}</p>` : ""}
-    ${(sel.cited ?? []).length ? `<h4>Memories used</h4><ol>${sel.cited.map((x: any) => { const s = sourceOf(x.text); return `<li>${s ? `<span class="badge web">web</span> ` : ""}${esc(x.text)}${s ? ` <a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc((() => { try { return new URL(s.url).hostname; } catch { return "source"; } })())}</a>` : ""}</li>`; }).join("")}</ol>` : ""}
-    ${(sel.derived ?? []).map((x: any) => `<h4>${KIND[x.kind] ?? x.kind} insight, from ${(x.evidence ?? []).length} memories</h4><ul>${(x.evidence ?? []).map((e: any) => `<li>${esc(e.text)}</li>`).join("")}</ul>`).join("")}
-    ${ins ? `<h4>Ranking sent to the reader</h4><table><tr><th>#</th><th>memory</th><th>score</th></tr>${(ins.final ?? []).slice(0, 8).map((x: any) => `<tr class="${x.kept ? "" : "cut"}"><td class="n">${x.rank}</td><td>${esc(String(x.text ?? "").slice(0, 110))}</td><td class="n">${x.score?.toFixed?.(3) ?? "-"}</td></tr>`).join("")}</table>
+    ${(sel.cited ?? []).length ? `<h4>Memories used</h4><ol>${sel.cited.map((x: any) => { const s = sourceOf(x.text); return `<li>${s ? `<span class="badge web">web</span> ` : ""}${memHtml(x.text)}${s ? ` <a class="src" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc((() => { try { return new URL(s.url).hostname; } catch { return "source"; } })())}</a>` : ""}</li>`; }).join("")}</ol>` : ""}
+    ${(sel.derived ?? []).map((x: any) => `<h4>${KIND[x.kind] ?? x.kind} insight, from ${(x.evidence ?? []).length} memories</h4><ul>${(x.evidence ?? []).map((e: any) => `<li>${memHtml(e.text)}</li>`).join("")}</ul>`).join("")}
+    ${ins ? `<h4>Ranking sent to the reader</h4><table><tr><th>#</th><th>memory</th><th>score</th></tr>${(ins.final ?? []).slice(0, 8).map((x: any) => `<tr class="${x.kept ? "" : "cut"}"><td class="n">${x.rank}</td><td>${esc(memLine(x.text, 110))}${chipHtml(x.text)}</td><td class="n">${x.score?.toFixed?.(3) ?? "-"}</td></tr>`).join("")}</table>
       <p class="k">BM25 ${(ins.keyword ?? []).length} hits · vector ${(ins.vector ?? []).length} hits · fused with ${esc(ins.fusion)} (k=${ins.rrfK}) · evidence ${ins.evidence}</p>` : ""}`;
   const evalSec = !nm?.available ? `<p class="k">No eval report found.</p>` : `
     <div class="kv"><span>accuracy <b>${(num(nm.accuracy) * 100).toFixed(1)}%</b> (${nm.scored}/${nm.total})</span><span>abstention <b>${nm.abstention?.absCorrect ?? "–"}/${nm.abstention?.absQuestions ?? "–"}</b></span></div>
@@ -445,8 +503,9 @@ async function render() {
       if (!S.graph) await loadGraph();
       S.map = await mountMap($("#mapwrap"), S.graph, S.layout); S.map.pulse(S.lastUsed);
     }
+    if (t === "memory" && mv === "list") void startList(); else stopList();
     if (t === "insights") void loadLearning();
-    if (t !== "chat") { S.maskSig = "~"; applyFilter(); semSchedule(); }
+    if (t !== "chat" && !(t === "memory" && mv === "list")) { S.maskSig = "~"; applyFilter(); semSchedule(); }
   } catch (e) { console.error(e); if (S.tab === t) el.innerHTML = errBox(t === "memory" ? `memory (${mv})` : t, e); }
 }
 
@@ -511,6 +570,7 @@ document.addEventListener("input", (ev) => {
   const f = ev.target as HTMLInputElement;
   if (f.id !== "q") return;
   S.q[S.tab] = f.value;
+  if (S.tab === "memory" && S.mem === "list") { clearTimeout(LS.timer); LS.timer = setTimeout(() => void startList(), 300); return; }
   if (S.tab !== "chat") { applyFilter(); semSchedule(); }
 });
 document.addEventListener("submit", (ev) => {

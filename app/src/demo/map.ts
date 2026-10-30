@@ -1,3 +1,4 @@
+import { splitMem, memLine } from "./memtext.js";
 // Memory map: every memory is a Transformium particle; layouts morph with particle order preserved.
 // Lines, hover and focus are drawn on an overlay canvas using the same projection as the engine.
 import { transformium } from "@transformium/core/engine";
@@ -171,7 +172,7 @@ export async function mountMap(wrap: HTMLElement, g: { nodes: Node[]; edges: Edg
     hover = -1; if (!drag) onMove(ev); };
   const onDbl = (ev: MouseEvent) => { if (pick(ev).best < 0) resetView(); };
   const EWORD: Record<string, string> = { supersedes: "supersedes", evidence: "evidence", "fixed-by": "fixed by", "same-signature": "same signature", "same-entity": "same entity", "co-used": "used together", relation: "relation" };
-  const snip = (i: number) => { const m = nodes[i]!; const t = m.type === "entity" ? (m.name ?? m.text) : m.text; return t.length > 90 ? t.slice(0, 90) + "…" : t; };
+  const snip = (i: number) => { const m = nodes[i]!; const t = m.type === "entity" ? (m.name ?? m.text) : memLine(m.text, 200); return t.length > 90 ? t.slice(0, 90) + "…" : t; };
   const kindOf = (i: number) => { const m = nodes[i]!; return m.type + (m.kind ? ` · ${m.kind}` : ""); };
   // edges of the focused node only, nearest segment within 6px in screen space (post zoom/pan)
   const pickEdge = (x: number, y: number) => { if (focus < 0) return -1; let best = -1, bd = 36;
@@ -196,7 +197,7 @@ export async function mountMap(wrap: HTMLElement, g: { nodes: Node[]; edges: Edg
     const m = nodes[best]!, rel = [...adj[best]!].length;
     card.classList.toggle("pinned", pinned >= 0 && best === pinned);
     if (m.type === "entity") { card.innerHTML = entityCard(m, esc); }
-    else card.innerHTML = `<div class="ht ${m.type}">${esc(m.type)}${m.kind ? ` · ${esc(m.kind)}` : ""}${m.severity ? ` · ${esc(m.severity)}` : ""}</div><div>${esc(m.text.length > 260 ? m.text.slice(0, 260) + "…" : m.text)}</div>${(() => { const s = m.type === "web" ? sourceOf(m.text) : null; return s ? `<div class="webline"><span class="badge web">web</span> Public web data gathered by the demo seeder via Tavily: <a href="${esc(safeUrl(s.url) ?? "#")}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(s.title.slice(0, 60))}</a></div>` : ""; })()}<div class="hk">${m.createdAt.slice(0, 10)} · ${rel} links${m.confidence != null ? ` · confidence ${m.confidence}` : ""}</div>`;
+    else card.innerHTML = `<div class="ht ${m.type}">${esc(m.type)}${m.kind ? ` · ${esc(m.kind)}` : ""}${m.severity ? ` · ${esc(m.severity)}` : ""}</div><div>${esc(memLine(m.text, 260))}</div>${splitMem(m.text).chip ? `<div class="hk">${esc(splitMem(m.text).chip)}</div>` : ""}${(() => { const s = m.type === "web" ? sourceOf(m.text) : null; return s ? `<div class="webline"><span class="badge web">web</span> Public web data gathered by the demo seeder via Tavily: <a href="${esc(safeUrl(s.url) ?? "#")}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(s.title.slice(0, 60))}</a></div>` : ""; })()}<div class="hk">${m.createdAt.slice(0, 10)} · ${rel} links${m.confidence != null ? ` · confidence ${m.confidence}` : ""}</div>`;
     card.style.display = "block"; card.style.left = `${Math.min(x + 14, wrap.clientWidth - 330)}px`; card.style.top = `${Math.min(y + 14, wrap.clientHeight - 140)}px`;
   };
   // clicking an entity pins its card so the profile and source links can be clicked
