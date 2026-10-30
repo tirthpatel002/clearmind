@@ -20,6 +20,10 @@
   "dependencies": {
     "agentmemory": "link:../../../agentmemory"
   },
+  "optionalDependencies": {
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "0.22.6"
+  },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "tsx": "^4.23.15",
