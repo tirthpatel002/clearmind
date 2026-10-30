@@ -1,6 +1,8 @@
 // Clearmind hackathon demo UI: three tabs (Chat, Memory, Insights), a context-aware composer in the bottom notch,
 // and a slide-out Inspector (recall details, live latency, credits ledger, eval numbers) openable from anywhere.
 import "./demo.css";
+import "./tenancy.css";
+import { initTenancy } from "./tenancy.js";
 import { mountMap, sourceOf, linksOf, type MapHandle, type Layout } from "./map.js";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
@@ -443,6 +445,7 @@ document.addEventListener("submit", (ev) => {
 });
 
 (async () => {
+  await initTenancy(API_BASE);
   renderTabs();
   S.cfg = await api("/api/demo/config");
   $("#model").textContent = `${S.cfg.reader.split("/").pop()} on Nebius`;

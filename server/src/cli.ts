@@ -13,6 +13,7 @@ async function main(argv = process.argv.slice(2)): Promise<number> {
       port: f.port ? Number(f.port) : undefined,
       host: f.host,
       "auth.defaultUser": f.user ?? f.owner,
+      "auth.workspaceUsers": f["workspace-users"],
     },
   });
   return 0;

@@ -6,6 +6,8 @@ export interface RouteContext {
   req: IncomingMessage;
   /** The signed-in user; every call below is scoped to them. */
   user: string;
+  /** Who is looking (workspace sign-in); undefined = full access. Same as req.viewer. */
+  viewer?: { id: string; admin?: boolean };
   cm: Clearmind;
   cfg: Config;
   query: URLSearchParams;
