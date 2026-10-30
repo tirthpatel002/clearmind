@@ -48,6 +48,9 @@ export function nebiusChat(ledger: SpendLedger, cfg: NebiusConfig = DEFAULTS, us
   return { call, llm, model };
 }
 
+/** Max memoised query embeddings per embedder. */
+export const EMBED_CACHE_MAX = 512;
+
 /** Embedder (Qwen3 by default), batched, metered and capped like chat. */
 export function nebiusEmbedder(ledger: SpendLedger, cfg: NebiusConfig = DEFAULTS, user?: string): Embedder {
   const model = cfg.nebius.embedModel;
@@ -60,9 +63,20 @@ export function nebiusEmbedder(ledger: SpendLedger, cfg: NebiusConfig = DEFAULTS
       ledger.add(model, "embed", u.totalTokens, 0, user);
     },
   } as any);
+  // Query embeddings repeat within one answer (recall, answerability cosine, inspector), so single-text
+  // calls are memoised (LRU, in-flight dedupe). Batches (ingest) go straight through.
+  const cache = new Map<string, Promise<Float32Array[]>>();
   return async (texts) => {
+    if (texts.length !== 1) { ledger.check(user); return raw(texts); }
+    const k = texts[0]!;
+    const hit = cache.get(k);
+    if (hit) { cache.delete(k); cache.set(k, hit); return hit; }
     ledger.check(user);
-    return raw(texts);
+    const p = raw(texts);
+    cache.set(k, p);
+    p.catch(() => cache.delete(k));
+    if (cache.size > EMBED_CACHE_MAX) cache.delete(cache.keys().next().value!);
+    return p;
   };
 }
 

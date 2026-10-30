@@ -19,6 +19,8 @@ export interface Config {
   /** Opt-in recall/answer features (see features/config.ts); omitted = all off. */
   /** Opt-in agentmemory EnhancedRetriever/GuardedStore options (see recall/engine.ts); omitted = current path. */
   retrieval?: Partial<import("./recall/engine.js").Retrieval>;
+  /** Entity extraction/linking and recall boost (see entities.ts); omitted = extraction on, LLM off. */
+  entities?: { enabled?: boolean; llm?: boolean; recallBoost?: number; minConfidence?: number; semanticMin?: number };
   features?: { [K in keyof import("./features/config.js").Features]?: Partial<import("./features/config.js").Features[K]> };
 }
 

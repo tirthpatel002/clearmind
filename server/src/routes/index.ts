@@ -5,6 +5,9 @@ import { importRoutes } from "./import.js";
 import { insightRoutes } from "./insights.js";
 import { memoryRoutes } from "./memories.js";
 import { stateRoutes } from "./state.js";
+import { demoRoutes } from "./demo.js";
+import { reflectRoutes } from "./demo-reflect.js";
+import { entityRoutes } from "./entities.js";
 import type { Route } from "./types.js";
 
 export type { Route, RouteContext } from "./types.js";
@@ -12,10 +15,13 @@ export type { Route, RouteContext } from "./types.js";
 export const routes: Route[] = [
   ...stateRoutes,
   ...memoryRoutes,
+  ...entityRoutes,
   ...accessRoutes,
   ...insightRoutes,
   ...graphRoutes,
   ...importRoutes,
+  ...demoRoutes,
+  ...reflectRoutes,
 ];
 
 /** Find the route for a request; returns it with the captured path groups. */
