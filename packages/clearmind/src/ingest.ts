@@ -42,7 +42,7 @@ export interface FileInfo {
   symbols: { name: string; kind: string; startLine: number; endLine: number }[];
   lines: number;
 }
-export interface FileChunks { path: string; chunks: Chunk[]; visibleTo?: string[]; source?: string; splitter: string; info: FileInfo }
+export interface FileChunks { path: string; chunks: Chunk[]; visibleTo?: string[]; source?: string; frontmatter?: Record<string, unknown>; splitter: string; info: FileInfo }
 export interface IngestOptions {
   dryRun?: boolean;
   /** Only consider files changed since this commit (git work trees). Deleted-file detection still uses the manifest. */
@@ -542,7 +542,7 @@ function summaryChunks(rel: string, info: FileInfo, chunks: Chunk[], deps: { dep
 export async function chunkFile(rel: string, src: string): Promise<FileChunks> {
   const ext = extname(rel).toLowerCase();
   const lang = langOf(rel);
-  let body: Chunk[], splitter: string, info: FileInfo, extra: { visibleTo?: string[]; source?: string } = {};
+  let body: Chunk[], splitter: string, info: FileInfo, extra: { visibleTo?: string[]; source?: string; frontmatter?: Record<string, unknown> } = {};
   if (CODE_EXT[ext]) ({ chunks: body, splitter, info } = await splitCode(rel, src, lang));
   else {
     info = otherInfo(rel, src, lang);
@@ -550,7 +550,9 @@ export async function chunkFile(rel: string, src: string): Promise<FileChunks> {
       const fm = parseFrontmatter(src);
       const vis = fm.data.visibleTo;
       const source = [fm.data.source, fm.data.url].find((x) => typeof x === "string" && x) as string | undefined;
-      extra = { ...(Array.isArray(vis) && vis.length ? { visibleTo: vis.map(String) } : typeof vis === "string" && vis ? { visibleTo: [vis] } : {}), ...(source ? { source } : {}) };
+      extra = { ...(Array.isArray(vis) && vis.length ? { visibleTo: vis.map(String) } : typeof vis === "string" && vis ? { visibleTo: [vis] } : {}), ...(source ? { source } : {}),
+        // keep the file's frontmatter (minus visibleTo, which lives in the acl) on every chunk, e.g. match: uncertain
+        ...(Object.keys(fm.data).some((k) => k !== "visibleTo") ? { frontmatter: Object.fromEntries(Object.entries(fm.data).filter(([k]) => k !== "visibleTo")) } : {}) };
       body = splitMarkdown(rel, src); splitter = "markdown";
     } else {
       const lines = src.split("\n");
@@ -708,6 +710,7 @@ export async function ingestPath(cm: Clearmind | null, path: string, o: IngestOp
         visibleTo: fc.visibleTo ?? o.visibleTo ?? ["workspace"],
         extra: {
           source: { path: rel, root: abs, commit: sel.commit, startLine: c.startLine, endLine: c.endLine, kind: c.kind, ...(c.symbol ? { symbol: c.symbol } : {}), ...(fc.source ? { url: fc.source } : {}), hash: sha(c.text) },
+          ...(fc.frontmatter ? { frontmatter: fc.frontmatter } : {}),
           context: {
             lang: fc.info.lang, kind: c.kind, ...(c.symbol ? { symbol: c.symbol } : {}), ...(c.symbolKind ? { symbolKind: c.symbolKind } : {}),
             ...(c.symbol?.includes(".") && c.kind !== "section" && !isSum ? { parentSymbol: c.symbol.split(".").slice(0, -1).join(".") } : {}),

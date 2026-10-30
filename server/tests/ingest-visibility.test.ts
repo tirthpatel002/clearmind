@@ -40,6 +40,9 @@ describe("ingest honours frontmatter visibleTo", () => {
     const dx = await dirText({ id: "judge-dhruv-diddi" });
     expect(dx).toMatch(/dhruv-diddi/);
     expect(dx).not.toMatch(/evan-rimer/);
+    const fmx = (db.prepare("SELECT extra FROM lessons").all() as any[]).map((r) => JSON.parse(r.extra)).filter((e) => e.frontmatter);
+    expect(fmx.length).toBeGreaterThan(0);
+    expect(fmx.every((e) => !("visibleTo" in e.frontmatter))).toBe(true);
     const acl = db.prepare("SELECT count(*) n FROM cm_acl WHERE item_kind='memory' AND principal='judge-dhruv-diddi'").get() as any;
     expect(acl.n).toBeGreaterThan(0);
     await cm.close();
