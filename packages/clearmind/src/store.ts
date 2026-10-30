@@ -684,13 +684,14 @@ export class Clearmind {
    */
   async ask(
     question: string,
-    req: { agentId?: string; purpose?: string | null; tags?: string[]; k?: number } = {},
+    req: { agentId?: string; purpose?: string | null; tags?: string[]; k?: number; recalled?: RecallEvidence } = {},
   ): Promise<AskResult> {
     if (!this.opts.chat) throw new Error("ask needs a chat model (set NEBIUS_API_KEY via --env-file)");
     const agentId = req.agentId ?? "owner";
     let r: ReadResult;
     if (agentId === "owner") {
-      const memories = (await this.recallWithEvidence(question, req.k ?? 6)).memories;
+      // reuse a recall the caller already ran for this question (no second recall)
+      const memories = (req.recalled ?? (await this.recallWithEvidence(question, req.k ?? 6))).memories;
       const c = { decision: "allowed" as const, reason: "owner", grant: null, tags: ["*"] };
       const ids = memories.map((m) => m.id);
       r = { ...c, memories, log: this.policy.record(this.opts.ownerId, { agentId, purpose: req.purpose ?? "owner-ask" }, c, ids) };

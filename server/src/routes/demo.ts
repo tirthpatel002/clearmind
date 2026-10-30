@@ -10,6 +10,18 @@ import type { Clearmind, Config } from "@clearmind/core";
 import { HttpError } from "../http.js";
 import { redactText } from "../redact.js";
 import type { Route, RouteContext } from "./types.js";
+import { readInsights } from "./demo-reflect.js";
+
+/** Sample questions shown as buttons; their embeddings are pre-warmed at start. */
+export const SAMPLE_QUESTIONS = [
+  "Why did my grocery order agent fail last week, and is it fixed?",
+  "What do I usually do on Friday evenings?",
+  "Any security issues I should know about?",
+  "What is the fastest way you have learned to file my expenses?",
+  "What do I usually ask you in the morning?",
+  "What time is my daily standup now?",
+  "What is my passport number?",
+];
 
 /** Demo wallet: starting credit (USD), stored in <dataDir>/demo-wallet.json. Not real money. */
 export const START_CREDIT_USD = 5;
@@ -112,8 +124,9 @@ async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
   const recallMs = Math.round(performance.now() - t0);
   const before = new Map(rows(cfg, user).map((r) => [r.lesson_id, learnRow(r, cfg)]));
   const t1 = performance.now();
-  const res = await cm.ask(q, { k: K });
+  const res = await cm.ask(q, { k: K, recalled: ev }); // single recall, reused
   const answerMs = Math.round(performance.now() - t1);
+  const readerMs = (res as { usage?: { ms?: number } }).usage?.ms ?? null;
   const calls = ledgerSince(cfg, off).filter((e) => e.user === user);
   const embed = calls.filter((c) => c.kind === "embed"), chat = calls.filter((c) => c.kind === "chat");
   const sum = (xs: any[], k: string) => xs.reduce((a, x) => a + (x[k] ?? 0), 0);
@@ -135,9 +148,13 @@ async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
     : "No supporting memory found: the reader judged none of the recalled memories relevant.";
   const after = new Map(rows(cfg, user).map((r) => [r.lesson_id, learnRow(r, cfg)]));
   const shown = res.memories.map((m) => ({ id: m.id, text: m.text, createdAt: m.createdAt, score: m.score ?? null }));
+  // cited insights: show what Clearmind derived them from
+  const ins = new Map(readInsights(cfg, user).insights.filter((i) => i.memoryId).map((i) => [i.memoryId!, i]));
+  const byId = new Map(all.map((r) => [r.lesson_id, r.text]));
+  const derived = res.cited.filter((id) => ins.has(id)).map((id) => { const i = ins.get(id)!; return { id, insightId: i.id, kind: i.kind, severity: i.severity ?? null, confidence: i.confidence, status: i.status, evidence: i.evidence.map((e) => ({ id: e, text: byId.get(e) ?? "" })) }; });
   return {
-    q, answer: res.answer, abstained: !!res.abstained, reason, cited: res.cited.map((id) => ({ id, text: res.memories.find((m) => m.id === id)?.text ?? "" })), shown,
-    evidence: ev.evidence, threshold, recallMs, answerMs,
+    q, answer: res.answer, abstained: !!res.abstained, reason, derived, cited: res.cited.map((id) => ({ id, text: res.memories.find((m) => m.id === id)?.text ?? "" })), shown,
+    evidence: ev.evidence, threshold, recallMs, answerMs, readerMs,
     tokens: { sent: promptTokens, completion: completionTokens, fullHistory: fullTokens, memories: all.length },
     cost: {
       usd: costUsd, fullUsd, savedPct: fullUsd ? Math.round((1 - costUsd / fullUsd) * 100) : null,
@@ -265,7 +282,7 @@ const cfgView = ({ cfg, user }: RouteContext) => {
   return {
     reader: cfg.nebius.chatModel, embed: cfg.nebius.embedModel, prices: { reader: price(cfg, cfg.nebius.chatModel), embed: price(cfg, cfg.nebius.embedModel) },
     fusion: a.fusion, rrfK: a.rrfK, learning: a.learning, hardForget: a.hardForget, redaction: a.redaction, audit: a.audit, k: K,
-    wallet: readWallet(cfg, user), startCredit: START_CREDIT_USD, minBalance: MIN_BALANCE_USD,
+    wallet: readWallet(cfg, user), startCredit: START_CREDIT_USD, minBalance: MIN_BALANCE_USD, samples: SAMPLE_QUESTIONS,
   };
 };
 
@@ -283,8 +300,9 @@ export const demoRoutes: Route[] = [
   {
     method: "GET", path: "/api/demo/warm", handle: async ({ cm }) => {
       const emb = (cm as unknown as { opts: { embedder?: (t: string[]) => Promise<unknown> } }).opts.embedder;
-      const t0 = performance.now(); if (emb) await emb(["warm up"]);
-      return { warmed: !!emb, ms: Math.round(performance.now() - t0) };
+      // one round trip keeps the connection warm; the sample questions are embedded once and memoised
+      const t0 = performance.now(); if (emb) await Promise.all(SAMPLE_QUESTIONS.map((q) => emb([q])));
+      return { warmed: !!emb, ms: Math.round(performance.now() - t0), questions: SAMPLE_QUESTIONS.length };
     },
   },
   { method: "GET", path: "/api/demo/wallet", handle: ({ cfg, user }) => readWallet(cfg, user) },
