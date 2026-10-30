@@ -1,6 +1,7 @@
 // Route table types shared by the route modules.
 import type { IncomingMessage } from "node:http";
 import type { Clearmind, Config, Viewer } from "@clearmind/core";
+import type { Researcher } from "../research.js";
 
 export interface RouteContext {
   req: IncomingMessage;
@@ -19,6 +20,8 @@ export interface RouteContext {
   useModel(): void;
   /** Whether this user is the seeded demo user. */
   isDemo(): boolean;
+  /** Runtime research (limits shared app-wide). */
+  research?: Researcher;
 }
 
 export interface Route {

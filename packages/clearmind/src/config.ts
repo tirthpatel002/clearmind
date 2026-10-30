@@ -9,6 +9,8 @@ export interface Config {
   recall: { minSimilarity: number; minLexicalSimilarity: number; abstain: { enabled: boolean; alpha: number; minEvidence: number; minEvidenceLexical: number } };
   confidence: { halfLifeDays: number; gain: number; floor: number; initial: number };
   duplicates: { threshold: number };
+  /** Runtime web research. auto: research in chat when recall is low-confidence (only when a search key is present). */
+  research: { auto: boolean; perMin: number; perDay: number; dailyCredits: number; dedupeHours: number; minHits: number; minEvidence: number | null };
   conflicts: { minSimilarityEmbedding: number; minSimilarityLexical: number };
   patterns: { minSupport: number; minDays: number; minShared: number; embeddingLink: number };
   spend: { globalCapUsd: number; perUserCapUsd: number };
@@ -37,6 +39,7 @@ export const DEFAULTS: Config = {
   recall: { minSimilarity: 0.5, minLexicalSimilarity: 0.05, abstain: { enabled: true, alpha: 0.7, minEvidence: 0.35, minEvidenceLexical: 0.34 } },
   confidence: { halfLifeDays: 30, gain: 0.4, floor: 0.05, initial: 0.6 },
   duplicates: { threshold: 0.8 },
+  research: { auto: true, perMin: 5, perDay: 30, dailyCredits: 150, dedupeHours: 24, minHits: 1, minEvidence: null },
   conflicts: { minSimilarityEmbedding: 0.75, minSimilarityLexical: 0.3 },
   patterns: { minSupport: 3, minDays: 2, minShared: 2, embeddingLink: 0.8 },
   spend: { globalCapUsd: 1, perUserCapUsd: 0.25 },

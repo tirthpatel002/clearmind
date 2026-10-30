@@ -10,7 +10,8 @@ import { HttpError, readJson, sendJson } from "./http.js";
 import { matchRoute } from "./routes/index.js";
 import type { RouteContext } from "./routes/index.js";
 import { signIn, signOut } from "./routes/session.js";
-import { researchRoutes, type ResearchDeps } from "./routes/research.js";
+import { researchRoutes } from "./routes/research.js";
+import { Researcher, type ResearchDeps } from "./research.js";
 import { StaticApp } from "./static.js";
 
 /** Open per-user stores kept in memory; the oldest is closed beyond this. */
@@ -34,6 +35,8 @@ export interface AppOptions {
    */
   /** Research route dependencies (tests inject a fake search; default reads TAVILY_API_KEY from env). */
   research?: ResearchDeps;
+  /** Number of users in this workspace (tenancy can supply it); default counts cfg.workspace.users minus guest. */
+  workspaceUserCount?: () => number | null;
   resolveViewer?: (req: IncomingMessage & { viewer?: Viewer }, user: string) => Viewer | undefined;
 }
 
@@ -53,7 +56,8 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
   const web = new StaticApp(o.appDir);
   const resolveViewer = o.resolveViewer ?? defaultViewer(cfg);
   const users = new Map<string, Clearmind>();
-  const research = researchRoutes(o.research);
+  const researcher = new Researcher(o.research, cfg.research);
+  const research = researchRoutes(researcher, o.workspaceUserCount ?? (() => { const us = (cfg as any).workspace?.users; return Array.isArray(us) ? us.filter((x: any) => (x?.id ?? x) !== "guest").length : null; }));
   const reqLimit = new RateLimiter(cfg.rateLimit.requestsPerMin);
   const modelLimit = new RateLimiter(cfg.rateLimit.modelCallsPerMin);
 
@@ -116,6 +120,7 @@ export function createApp(cfg: Config, o: AppOptions = {}): App {
           if (!modelLimit.take(user)) throw new HttpError(429, "too many model calls, try again in a minute");
         },
         isDemo: () => isDemo(user),
+        research: researcher,
       };
       sendJson(res, 200, await found.route.handle(ctx));
     } catch (e) {

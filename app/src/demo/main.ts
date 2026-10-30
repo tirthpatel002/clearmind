@@ -207,16 +207,41 @@ function webSources(r: any) {
 }
 function chatItem(m: any, idx: number): string {
   if (m.role === "user") return `<div class="msg user"><span>${esc(m.q)}</span></div>`;
-  if (m.pending) return `<div class="msg"><div class="bub spin">Thinking<span class="dots"><i></i><i></i><i></i></span></div></div>`;
+  if (m.pending) return `<div class="msg"><div class="bub spin">${m.slow ? "Not in memory yet, researching live" : "Thinking"}<span class="dots"><i></i><i></i><i></i></span></div></div>`;
   if (m.error) return `<div class="msg"><div class="bub refused">${esc(m.error)}</div></div>`;
   if (m.research) return researchItem(m.research);
   const r = m.r;
   if (r.refused) return `<div class="msg"><div class="bub refused"><p>${esc(r.reason)}</p><button class="btn dark" data-act="topup">Top up $5.00 demo credits</button></div></div>`;
-  return `<div class="msg"><div class="bub ${r.abstained ? "abst" : ""}"><div class="ans">${answerHtml(r)}</div>${webSources(r)}${r.abstained || r.lowConfidence ? researchBtn(S.chat[idx - 1]?.q ?? "") : ""}<a href="#" class="dlink" data-act="inspect" data-i="${idx}">Details</a></div></div>`;
+  return `<div class="msg"><div class="bub ${r.abstained ? "abst" : ""}"><div class="ans">${answerHtml(r)}</div>${researchLine(r.research)}${webSources(r)}${(r.abstained || r.lowConfidence) && r.research?.reason === "off" ? researchBtn(S.chat[idx - 1]?.q ?? "") : ""}<a href="#" class="dlink" data-act="inspect" data-i="${idx}">Details</a></div></div>`;
 }
 /** Offered, never auto-run: one click = one Tavily basic search (1 credit) + one distil call on the configured model. */
 export const researchBtn = (q: string, entityId = "", label = "Research &amp; remember") =>
   `<button class="btn research" data-act="research" data-q="${esc(q)}" data-e="${esc(entityId)}" title="Searches the public web once (1 Tavily credit) and saves what it finds as memories with source links">${label}</button>`;
+const LIMIT_REASONS = new Set(["user_minute", "user_day", "workspace_day"]);
+/** Under a chat answer: what live research did (sources visible), or clearly why it did not run. */
+function researchLine(x: any): string {
+  if (!x) return "";
+  if (x.ran || x.reused) {
+    const src = (x.sources ?? []).slice(0, 6).map((s: any) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(s.title.slice(0, 40))}</a>`).join(" · ");
+    return `<div class="rline"><span class="badge web">web</span> ${x.ran ? `Researched live with Tavily · ${x.memories.length} new ${x.memories.length === 1 ? "memory" : "memories"} saved` : `Used ${x.memories.length} memories researched earlier`}${src ? ` · ${src}` : ""}</div>`;
+  }
+  if (LIMIT_REASONS.has(x.reason)) return `<div class="rline limit">${esc(x.note)} Answering from memory only.</div>`;
+  if (x.reason === "error") return `<div class="rline k">Live research failed; answering from memory only.</div>`;
+  return "";
+}
+async function openCredits() {
+  const d = $("#drawer"); S.sel = -2; d.classList.add("on"); d.innerHTML = '<p class="k">Loading…</p>';
+  try {
+    const c = await api("/api/research/credits");
+    const bar = (u: number, cap: number) => `<div class="rbar"><i style="width:${Math.min(100, Math.round((u / Math.max(1, cap)) * 100))}%"></i></div>`;
+    d.innerHTML = `<div class="dh"><b>Research credits</b><button class="btn sm" data-act="close">Close</button></div>
+      <section><p class="k">Live web research (Tavily basic search, 1 credit each). ${c.configured ? (c.auto ? "Runs automatically when memory can't answer." : "Automatic research is off.") : "Not configured on this server."}</p>
+      <h4>Workspace today</h4><p><b>${c.workspace.used}</b> used · <b>${Math.max(0, c.workspace.cap - c.workspace.used)}</b> left of ${c.workspace.cap}</p>${bar(c.workspace.used, c.workspace.cap)}
+      <h4>You (${esc(c.user.id)})</h4><p><b>${c.user.used}</b> used · <b>${Math.max(0, c.user.dayCap - c.user.used)}</b> left of ${c.user.dayCap} today · max ${c.user.minuteCap}/min</p>${bar(c.user.used, c.user.dayCap)}
+      <p>${c.users == null ? '<span class="k">Workspace user count not available.</span>' : `<b>${c.users}</b> users in this workspace <span class="k">(${esc(c.usersCounted)})</span>`}</p>
+      ${c.perViewer ? `<table><tr><th>viewer</th><th>used today</th></tr>${c.perViewer.map((p: any) => `<tr><td>${esc(p.viewer)}</td><td class="n">${p.used}</td></tr>`).join("") || '<tr><td colspan=2 class="k">No research yet today.</td></tr>'}</table>` : ""}</section>`;
+  } catch (e) { d.innerHTML = `<div class="bub refused">${esc((e as Error).message)}</div>`; }
+}
 function researchItem(r: any): string {
   if (r.pending) return `<div class="msg"><div class="bub spin">Researching the web<span class="dots"><i></i><i></i><i></i></span></div></div>`;
   if (!r.memories.length) return `<div class="msg"><div class="bub abst"><p>Nothing useful found for <b>${esc(r.query)}</b>.</p></div></div>`;
@@ -405,7 +430,9 @@ async function ask(q: string) {
   if (S.tab !== "chat") go("chat"); else void render();
   const slot = S.chat[S.chat.length - 1];
   try {
-    slot.r = await api("/api/demo/ask", { q, session: S.session });
+    const slow = setTimeout(() => { if (slot.pending) { slot.slow = true; if (S.tab === "chat") void render(); } }, 2500);
+    try { slot.r = await api("/api/demo/ask", { q, session: S.session }); } finally { clearTimeout(slow); }
+    if (slot.r.research?.ran) S.graph = null; // new memories: the map reloads
     if (S.cfg) S.cfg.wallet = slot.r.wallet; renderWallet(slot.r.wallet);
     for (const m of slot.r.shown ?? []) S.texts.set(m.id, m.text);
     S.lastUsed = (slot.r.shown ?? []).map((m: any) => m.id);
@@ -433,6 +460,7 @@ document.addEventListener("click", async (ev) => {
   if (act === "inspect") return openInspector(Number(a.dataset.i));
   if (act === "close") $("#drawer").classList.remove("on");
   if (act === "ask") void ask(a.dataset.q!);
+  if (act === "rcredits") return void openCredits();
   if (act === "research") { (a as HTMLButtonElement).disabled = true; return void research(a.dataset.q!, a.dataset.e || undefined); }
   if (act === "askq") { const q = a.dataset.q!; go("chat"); void ask(q); }
   if (act === "mem") { S.mem = a.dataset.v as MemView; renderTabs(); void render(); }
