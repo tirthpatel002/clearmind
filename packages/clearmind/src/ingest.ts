@@ -68,6 +68,7 @@ export function skipReason(rel: string, size: number, head?: Buffer, maxBytes = 
   if (rel.split("/").slice(0, -1).some((d) => SKIP_DIRS.has(d))) return "ignored-dir";
   if (SECRETS.test(rel)) return "secret-like";
   if (LOCKFILES.test(rel)) return "lockfile";
+  if (/(^|\/)INDEX\.md$/.test(rel)) return "index-listing";
   if (DATA_EXT.test(rel)) return "binary-or-data";
   if (size > maxBytes) return "too-large";
   if (size === 0) return "empty";
