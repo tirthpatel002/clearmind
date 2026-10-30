@@ -1,0 +1,144 @@
+{
+ "source": "https://nebiusglobalaihackathon.devpost.com/",
+ "note": "Public professional info only (name, title, company) as listed on the Devpost judges section. No personal data.",
+ "judges": [
+  {
+   "name": "Nancy Agarwal",
+   "slug": "nancy-agarwal",
+   "title": "Senior Software Engineer",
+   "company": "NVIDIA"
+  },
+  {
+   "name": "Abhinav Balasubramanian",
+   "slug": "abhinav-balasubramanian",
+   "title": "Staff AI Engineer",
+   "company": "NVIDIA"
+  },
+  {
+   "name": "Dylan Bristot",
+   "slug": "dylan-bristot",
+   "title": "Founding PMM",
+   "company": "Nebius Token Factory"
+  },
+  {
+   "name": "AbdulMajed Raja",
+   "slug": "abdulmajed-raja",
+   "title": "Developer Relations Lead (Token Factory) - APJ",
+   "company": "Nebius"
+  },
+  {
+   "name": "Rob Spectre",
+   "slug": "rob-spectre",
+   "title": "Developer Relations Advisor",
+   "company": "Nebius"
+  },
+  {
+   "name": "Evan Rimer",
+   "slug": "evan-rimer",
+   "title": "Forward Deployed Engineer",
+   "company": "Tavily"
+  },
+  {
+   "name": "Lakshmi Rameish",
+   "slug": "lakshmi-rameish",
+   "title": "Senior System Software Engineer",
+   "company": "NVIDIA"
+  },
+  {
+   "name": "Surbhi Jha",
+   "slug": "surbhi-jha",
+   "title": "Senior Software Engineer",
+   "company": "NVIDIA"
+  },
+  {
+   "name": "Joe Sarabia",
+   "slug": "joe-sarabia",
+   "title": "Director of Product, Ecosystem",
+   "company": "Nebius"
+  },
+  {
+   "name": "Marouane Khoukh",
+   "slug": "marouane-khoukh",
+   "title": "Technical Developer Advocate",
+   "company": "Nebius"
+  },
+  {
+   "name": "Ricky Johnson",
+   "slug": "ricky-johnson",
+   "title": "Developer Relations",
+   "company": "Tavily"
+  },
+  {
+   "name": "Selena Williams",
+   "slug": "selena-williams",
+   "title": "System Software Engineer",
+   "company": "NVIDIA"
+  },
+  {
+   "name": "Aleksandr Patrushev",
+   "slug": "aleksandr-patrushev",
+   "title": "Head of Product Management, ML/AI",
+   "company": "Nebius"
+  },
+  {
+   "name": "Unmesh Kurup",
+   "slug": "unmesh-kurup",
+   "title": "Chief ML Researcher, Product",
+   "company": "Nebius"
+  },
+  {
+   "name": "Daniel Myers",
+   "slug": "daniel-myers",
+   "title": "Director of Developer Relations",
+   "company": "Nebius"
+  },
+  {
+   "name": "Jacquie Capur",
+   "slug": "jacquie-capur",
+   "title": "Senior Developer Advocate",
+   "company": "Nebius"
+  },
+  {
+   "name": "Lakshya Prakash Agarwal",
+   "slug": "lakshya-prakash-agarwal",
+   "title": "Forward Deployed Engineer",
+   "company": "Tavily"
+  },
+  {
+   "name": "Johnny Nunez",
+   "slug": "johnny-nunez",
+   "title": "AI Developer Advocate - Physical AI & Robotics",
+   "company": "NVIDIA"
+  },
+  {
+   "name": "Evan Helda",
+   "slug": "evan-helda",
+   "title": "Head of GTM Physical AI",
+   "company": "Nebius"
+  },
+  {
+   "name": "Mikhail Rozhkov",
+   "slug": "mikhail-rozhkov",
+   "title": "Technical Product Manager - Serverless AI",
+   "company": "Nebius"
+  },
+  {
+   "name": "Dhruv Diddi",
+   "slug": "dhruv-diddi",
+   "title": "Principal - Physical AI Ecosystem",
+   "company": "Nebius"
+  },
+  {
+   "name": "Aditya Sahu",
+   "slug": "aditya-sahu",
+   "title": "TME, Jetson Platform",
+   "company": "NVIDIA"
+  },
+  {
+   "name": "Sayali Kandarkar",
+   "slug": "sayali-kandarkar",
+   "title": "Senior AI/ML Engineer",
+   "company": "NVIDIA"
+  }
+ ]
+}
