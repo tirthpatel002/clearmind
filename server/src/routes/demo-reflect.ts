@@ -121,20 +121,21 @@ const GRAPH_MAX_NODES = 1500;
 // The map is recomputed only when the stores change (it takes seconds on a 5k-memory store): keyed per viewer.
 const graphCache = new Map<string, Promise<unknown>>();
 const mt = (f: string) => { try { return statSync(f).mtimeMs; } catch { return 0; } };
-export function graphCached(cfg: Config, user: string, cm?: RouteContext["cm"], viewer?: Viewer) {
-  const d = cfg.dataDir, key = [user, viewer?.id ?? "", viewer?.admin ? 1 : 0, ...["memory.db", "memory.db-wal", "entities.db", "entities.db-wal", `insights.${user}.json`].map((f) => mt(join(d, f)))].join("|");
+export async function graphCached(cfg: Config, user: string, cm?: RouteContext["cm"], viewer?: Viewer) {
+  // content stamp, not memory.db mtimes: recall learning writes the WAL on every read and made every request a miss
+  const d = cfg.dataDir, key = [user, viewer?.id ?? "", viewer?.admin ? 1 : 0, cm ? await cm.contentStamp() : mt(join(d, "memory.db-wal")), mt(join(d, `insights.${user}.json`))].join("|");
   let p = graphCache.get(key);
   if (!p) { if (graphCache.size > 64) graphCache.clear(); p = graph(cfg, user, cm, viewer); graphCache.set(key, p); p.catch(() => graphCache.delete(key)); }
   return p;
 }
 /**
- * Optional display paging of the map (?limit=&offset=, default 100, max 500) over the cached per-viewer graph:
+ * Optional display paging of the map (?limit=&offset=, default 100, max GRAPH_MAX_NODES) over the cached per-viewer graph:
  * a page holds those nodes and the edges between nodes on pages up to and including it. Without either
  * parameter the whole graph is returned as before.
  */
 export function pageGraph(g: any, q: URLSearchParams): any {
   if (!g || !Array.isArray(g.nodes) || (!q.has("limit") && !q.has("offset"))) return g;
-  const limit = Math.min(500, Math.max(1, Number(q.get("limit") ?? 100) || 100)), offset = Math.max(0, Number(q.get("offset") ?? 0) || 0);
+  const limit = Math.min(GRAPH_MAX_NODES, Math.max(1, Number(q.get("limit") ?? 100) || 100)), offset = Math.max(0, Number(q.get("offset") ?? 0) || 0);
   const all = g.nodes as { id: string }[], nodes = all.slice(offset, offset + limit);
   const upto = new Set(all.slice(0, offset + limit).map((n) => n.id)), mine = new Set(nodes.map((n) => n.id));
   const edges = ((g.edges ?? []) as { from: string; to: string }[]).filter((e) => upto.has(e.from) && upto.has(e.to) && (mine.has(e.from) || mine.has(e.to)));

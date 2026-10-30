@@ -370,20 +370,24 @@ export class Clearmind {
   async visibleEntityIds(viewer?: Viewer): Promise<Set<string> | null> {
     if (fullAccess(viewer)) return null;
     // cached per principal set until any store file changes (one recall used to rebuild this 4-5 times, ~270 ms each)
-    const ck = principalsOf(viewer!).slice().sort().join("|") + "@" + this.dataStamp();
+    const ck = principalsOf(viewer!).slice().sort().join("|") + "@" + (await this.contentStamp());
     const hit = this.visEntCache.get(ck); if (hit) return hit;
     const res = await this.visibleEntityIdsUncached(viewer!);
     if (this.visEntCache.size > 64) this.visEntCache.clear();
     this.visEntCache.set(ck, res); return res;
   }
   private visEntCache = new Map<string, Set<string>>();
-  /** Cheap change stamp over the store's sqlite files (db + wal mtimes and sizes). */
-  private dataStamp(): string {
-    let o = "";
-    for (const f of ["memory.db", "memory.db-wal", "entities.db", "entities.db-wal", "policy.db", "policy.db-wal"]) {
-      try { const st = statSync(join(this.opts.dir, f)); o += st.mtimeMs + ":" + st.size + ";"; } catch { o += "-;"; }
-    }
-    return o;
+  private entListCache = new Map<string, { all: any[]; counts: Record<string, number> }>();
+  /**
+   * Change stamp for display caches. Not file mtimes: recall learning and access logging write memory.db and policy.db
+   * on every read, which made every cache miss. Content: lesson count / newest / active count, acl rows, entities.
+   */
+  async contentStamp(): Promise<string> {
+    const db = await this.db();
+    const r = db.prepare(`SELECT COUNT(*) n, MAX(created_at) c, SUM(status='active') a FROM lessons WHERE namespace=? AND user_id=? AND agent_id=?`).get(...this.w) as any;
+    const acl = (db.prepare(`SELECT COUNT(*) n FROM cm_acl`).get() as any).n;
+    let ent = "-"; try { const st = statSync(join(this.opts.dir, "entities.db-wal")); ent = String(st.size); } catch { /* none */ }
+    return `${r.n}|${r.c}|${r.a}|${acl}|${this.entities.total()}|${ent}`;
   }
   private async visibleEntityIdsUncached(viewer: Viewer): Promise<Set<string>> {
     // Same rule as before (explicit entity acl wins; else visible when a visible memory mentions it), evaluated in JS
@@ -417,9 +421,17 @@ export class Clearmind {
       const entities = es.list(o), off = o.offset ?? 0, total = o.type || o.q ? es.list({ ...o, limit: 1_000_000, offset: 0 }).length : es.total();
       return { entities, total, nextOffset: off + entities.length < total ? off + entities.length : null, counts: es.counts() };
     }
-    const ids = [...s], all = es.list({ ...o, limit: 10_000, offset: 0, only: ids });
-    const counts: Record<string, number> = {};
-    for (const e of es.list({ limit: 10_000, only: ids })) counts[e.type ?? ""] = (counts[e.type ?? ""] ?? 0) + 1;
+    // per viewer (principal set) and filter, until a store file changes: rebuilding this took ~1.4 s per request
+    const ck = principalsOf(viewer!).slice().sort().join("|") + "#" + (o.type ?? "") + "#" + (o.q ?? "") + "@" + (await this.contentStamp());
+    let hit = this.entListCache.get(ck);
+    if (!hit) {
+      const ids = [...s], all = es.list({ ...o, limit: 1_000_000, offset: 0, only: ids });
+      const counts: Record<string, number> = {};
+      for (const e of es.list({ limit: 1_000_000, only: ids })) counts[e.type ?? ""] = (counts[e.type ?? ""] ?? 0) + 1;
+      if (this.entListCache.size > 64) this.entListCache.clear();
+      this.entListCache.set(ck, (hit = { all, counts }));
+    }
+    const { all, counts } = hit;
     const off = o.offset ?? 0;
     const page = all.slice(off, off + Math.min(o.limit ?? 100, 10_000));
     return { entities: page, total: all.length, nextOffset: off + page.length < all.length ? off + page.length : null, counts };
