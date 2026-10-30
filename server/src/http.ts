@@ -1,6 +1,6 @@
 // Small HTTP helpers: JSON bodies, JSON replies and typed errors.
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { gzipSync } from "node:zlib";
+import { gzipSync, createGzip } from "node:zlib";
 
 export class HttpError extends Error {
   constructor(
@@ -56,9 +56,16 @@ export class SseReply {
 export async function sendSse(req: IncomingMessage, res: ServerResponse, r: SseReply): Promise<void> {
   let closed = false;
   req.on("close", () => { closed = true; });
-  res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+  const gzip = /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
+  res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no", ...(gzip ? { "Content-Encoding": "gzip", Vary: "Accept-Encoding" } : {}) });
   res.flushHeaders?.();
-  const send = (event: string, data: unknown) => { if (!closed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
+  const gz = gzip ? createGzip({ level: 4 }) : null;
+  if (gz) gz.pipe(res);
+  const send = (event: string, data: unknown) => {
+    if (closed) return;
+    const chunk = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    if (gz) { gz.write(chunk); gz.flush(); } else res.write(chunk);
+  };
   try {
     send("meta", await r.meta());
     for await (const b of r.batches()) {
@@ -70,5 +77,5 @@ export async function sendSse(req: IncomingMessage, res: ServerResponse, r: SseR
   } catch (e) {
     send("error", { message: (e as Error).message });
   }
-  if (!closed) res.end();
+  if (gz) gz.end(); else if (!closed) res.end();
 }
