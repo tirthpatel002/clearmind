@@ -67,7 +67,7 @@ const S = {
   tab: "chat" as Tab, mem: "map" as MemView, chat: [] as any[], cfg: null as any, session: `s-${Date.now().toString(36)}`, busy: false,
   texts: new Map<string, string>(), map: null as MapHandle | null, layout: "graph" as Layout, lastUsed: [] as string[], reflecting: false,
   q: { chat: "", memory: "", insights: "" } as Record<Tab, string>, showAll: false, sel: -1, filterMs: [] as number[],
-  graph: null as any, hay: [] as string[], insights: null as any, maskSig: "", insOrder: new Map<any, number>(),
+  graph: null as any, privacy: null as any, pvShown: 200, hay: [] as string[], insights: null as any, maskSig: "", insOrder: new Map<any, number>(),
 };
 
 // ---------- semantic half of the composer search (Memory + Insights only; Chat recall stays on Nebius Qwen3) ----------
@@ -293,9 +293,26 @@ function memHead() {
     <span id="count" class="count"></span></div>`;
 }
 const GRAPH_CAP = 1500, LIST_PAGE = 200;
+function mapStatus(t: string) { const w = document.getElementById("mapwrap"); if (!w) return; let el = document.getElementById("mapstat"); if (!el) { el = document.createElement("div"); el.id = "mapstat"; el.className = "k mstat"; el.style.cssText = "position:absolute;left:12px;top:8px;z-index:3"; w.append(el); } el.textContent = t; if (!t) el.remove(); }
+/** Graph over SSE (meta, then node/edge batches); falls back to the capped JSON graph. Never hangs: 60 s guard. */
+function fetchGraph(): Promise<any> {
+  const json = () => api(`/api/demo/graph?limit=${GRAPH_CAP}`);
+  if (typeof EventSource === "undefined") return json();
+  return new Promise((resolve) => {
+    const g: any = { nodes: [], edges: [] }; let meta = false, total = 0, fin = false;
+    const es = new EventSource(API_BASE + "/api/stream/graph", { withCredentials: !!API_BASE });
+    const end = (fallback: boolean) => { if (fin) return; fin = true; es.close(); clearTimeout(guard); mapStatus(""); resolve(fallback ? json().catch(() => g) : g); };
+    const guard = setTimeout(() => end(!g.nodes.length), 60000);
+    es.addEventListener("meta", (ev: any) => { meta = true; try { const m = JSON.parse(ev.data); total = m.total ?? m.nodes ?? 0; for (const k of ["counts", "entities", "entityCounts"]) if (m[k] && typeof m[k] === "object") g[k] = m[k]; } catch {} mapStatus(`Loading map… 0 of ${total}`); });
+    es.addEventListener("batch", (ev: any) => { try { const b = JSON.parse(ev.data); for (const x of b.items ?? []) { if (!x) continue; if (b.kind === "edge" || (b.kind !== "node" && x.from && x.to && !x.id)) g.edges.push(x); else g.nodes.push(x); } } catch {} mapStatus(`Loading map… ${g.nodes.length}${total ? ` of ${total}` : ""} nodes, ${g.edges.length} links`); });
+    es.addEventListener("done", () => end(false));
+    es.addEventListener("error", (ev: any) => { if (ev?.data) { end(!meta || !g.nodes.length); } });
+    es.onerror = () => end(!meta || !g.nodes.length);
+  });
+}
 async function loadGraph() {
-  const g = await api(`/api/demo/graph?limit=${GRAPH_CAP}`);
-  g.nodes = (g.nodes ?? []).filter((x: any) => x && x.id).slice(0, GRAPH_CAP); g.edges = g.edges ?? [];
+  const g = await fetchGraph();
+  g.nodes = (g.nodes ?? []).filter((x: any) => x && x.id); g.edges = g.edges ?? [];
   for (const x of g.nodes) { x.text = String(x.text ?? x.name ?? ""); x.createdAt = typeof x.createdAt === "string" ? x.createdAt : ""; x.type = x.type ?? "memory"; }
   { const ids = new Set(g.nodes.map((x: any) => x.id)); g.edges = g.edges.filter((e: any) => e && ids.has(e.from) && ids.has(e.to)); }
   S.graph = g;
@@ -321,10 +338,10 @@ async function viewMemory() {
     const ch = (r.changed ?? []).filter((i: any) => i.status === "replaced");
     return memHead() + `<div class="list">${ch.map((i: any, o: number) => `<div class="li chg" data-id="${i.id}" data-o="${o}" data-f="${esc(`${i.text} ${i.replacedByText} ${i.key ?? ""} ${String(i.createdAt ?? "").slice(0, 10)}`.toLowerCase())}"><span class="old"><span class="t">${esc(i.text)}</span></span><span class="arrow"> → </span><b>${esc(i.replacedByText)}</b></div>`).join("") || '<div class="k">No changed facts yet.</div>'}</div>`;
   }
-  const p = await api("/api/demo/privacy");
-  return memHead() + `<div class="list">${(p.items ?? []).slice(0, (S.showAll || (S.q.memory ?? "").trim()) ? Infinity : LIST_PAGE).map((m: any, o: number) => { m.sensitive = m.sensitive ?? []; return `<div class="li pv" id="pv-${m.id}" data-id="${m.id}" data-o="${o}" data-f="${esc(`${m.text} ${m.sensitive.join(" ")}`.toLowerCase())}"><span class="t">${memHtml(m.text)}</span>${m.sensitive.length ? ` <span class="chip warn">${esc(m.sensitive.join(", "))}</span>` : ""}
+  const p = S.privacy ?? (S.privacy = await api("/api/demo/privacy"));
+  return memHead() + `<div class="list">${(p.items ?? []).slice(0, (S.q.memory ?? "").trim() ? Infinity : S.pvShown).map((m: any, o: number) => { m.sensitive = m.sensitive ?? []; return `<div class="li pv" id="pv-${m.id}" data-id="${m.id}" data-o="${o}" data-f="${esc(`${m.text} ${m.sensitive.join(" ")}`.toLowerCase())}"><span class="t">${memHtml(m.text)}</span>${m.sensitive.length ? ` <span class="chip warn">${esc(m.sensitive.join(", "))}</span>` : ""}
     <span class="acts">${m.sensitive.length ? `<button class="btn" data-act="redact" data-id="${m.id}">Redact</button>` : ""}<button class="btn" data-act="forget" data-id="${m.id}">Forget</button></span></div>`; }).join("") || '<div class="k">No memories.</div>'}</div>
-    ${!(S.showAll || (S.q.memory ?? "").trim()) && (p.items ?? []).length > LIST_PAGE ? `<p><a href="#" class="dlink" data-act="all">Show all ${p.items.length}</a></p>` : ""}`;
+    ${!(S.q.memory ?? "").trim() && (p.items ?? []).length > S.pvShown ? `<p><a href="#" class="dlink" data-act="pvmore" id="pvmore">Showing ${S.pvShown} of ${p.items.length} · load ${Math.min(LIST_PAGE, p.items.length - S.pvShown)} more</a></p>` : ""}`;
 }
 
 // ---------- memory list: streamed in batches (SSE, JSON paging fallback); search always runs on the server over the whole store ----------
@@ -491,6 +508,7 @@ function openInspector(i = -1) { S.sel = i; $("#drawer").classList.add("on"); $(
 // ---------- render ----------
 async function render() {
   const el = $("#content"), t = S.tab, mv = S.mem;
+  if (t !== "chat" && !el.querySelector(".list,#mapwrap")) el.innerHTML = `<div class="list">${'<div class="li" style="opacity:.35">&nbsp;</div>'.repeat(6)}</div><p class="k mstat">Loading…</p>`;
   try {
     const html = t === "chat" ? viewChat() : t === "memory" ? await viewMemory() : await viewInsights();
     if (S.tab !== t || S.mem !== mv) return;
@@ -553,7 +571,8 @@ document.addEventListener("click", async (ev) => {
   if (act === "mem") { S.showAll = false; S.mem = a.dataset.v as MemView; renderTabs(); void render(); }
   if (act === "layout") { S.layout = a.dataset.l as Layout; S.map?.setLayout(S.layout); document.querySelectorAll("[data-act=layout]").forEach((b) => b.classList.toggle("on", b === a)); }
   if (act === "all") { S.showAll = true; void render(); }
-  if (act === "retry") { S.graph = null; void render(); void renderInspector(); }
+  if (act === "pvmore") { S.pvShown += LIST_PAGE; void render(); return; }
+  if (act === "retry") { S.privacy = null; S.graph = null; void render(); void renderInspector(); }
   if (act === "reflect") {
     S.reflecting = true; void render();
     try { const r = await api("/api/demo/reflect", {}); if (r.wallet) { S.cfg.wallet = r.wallet; renderWallet(r.wallet); } S.graph = null; } catch (e) { alert((e as Error).message); }
@@ -563,7 +582,7 @@ document.addEventListener("click", async (ev) => {
   if (act === "drain") { const w = await api("/api/demo/set-balance", { usd: 0.001 }); S.cfg.wallet = w; renderWallet(w); void renderInspector(); }
   if (act === "forget" || act === "redact") {
     if (act === "forget" && !confirm("Hard-delete this memory permanently?")) return;
-    a.textContent = "..."; await api(`/api/demo/${act}`, { id: a.dataset.id }); S.graph = null; void render();
+    a.textContent = "..."; await api(`/api/demo/${act}`, { id: a.dataset.id }); S.graph = null; S.privacy = null; void render();
   }
 });
 document.addEventListener("input", (ev) => {
