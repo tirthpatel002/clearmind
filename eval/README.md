@@ -1,11 +1,14 @@
 # Evaluation
 
+This folder holds the harness used to evaluate Clearmind recall and answers on LongMemEval-S.
+
+
 `eval/longmemeval/` is the LongMemEval-S harness (moved here from the `eval-lme` branch). It drives
 `@clearmind/core` directly and traces every stage with `@hackkit/observe`; model calls go through
 `@hackkit/connector` (both linked from `../hackkit/.worktrees/observability`).
 
 ```bash
-node --env-file=$HOME/.secrets/hackathon.env --import tsx eval/longmemeval/run.ts \
+NEBIUS_API_KEY=... corepack pnpm eval:lme \
   --config eval/longmemeval/configs/heldout-modal.json --phase <name> --split dev|heldout|all [--limit N] [--ids a,b]
 python3 eval/longmemeval/report_full.py ...   # reports: report.py, report_full.py, latency.py, cost_compare.py
 ```

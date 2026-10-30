@@ -1,8 +1,10 @@
 # Hackathon: Nebius x NVIDIA Global AI Hackathon
 
+This file summarises the hackathon rules and how Clearmind uses the sponsor technology.
+
 ## Goal
 
-Tirth's goal is to **win the Nebius x NVIDIA Global AI Hackathon on Devpost** with Clearmind, and also the **Best Use of Tavily** bonus prize. We say that openly.
+Clearmind is submitted to the Nebius x NVIDIA Global AI Hackathon on Devpost (Personal AI track) and is also entered for the Best Use of Tavily bonus prize.
 
 - Hackathon page: https://nebiusglobalaihackathon.devpost.com/ (rules: https://nebiusglobalaihackathon.devpost.com/rules)
 - Deadline: "Oct 30, 2026 @ 10:00am PDT" (10:30 PM IST).
@@ -61,6 +63,3 @@ Prizes: Grand Prize $20,000; 2nd $10,000; 3rd $6,000; each track winner an NVIDI
 
 The build seeder (`scripts/seed-build.ts`) ingests the whole repo, including this file, through the general `ingestPath` ingest, so the project's own goal, rules and code are in memory.
 
-## Demo script
-
-> **TODO: final demo script (coordinator fills)**

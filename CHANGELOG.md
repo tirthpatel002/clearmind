@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased (general-improvements)
+Notable changes to Clearmind.
+
+## Unreleased
 
 Opt-in features under `config.features` (omitted = all off, behaviour unchanged). See `packages/clearmind/src/features/config.ts`.
 
