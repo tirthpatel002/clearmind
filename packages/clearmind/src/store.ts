@@ -580,6 +580,11 @@ export class Clearmind {
     }
     return [...new Set(ids.values())];
   }
+  /** Embed many texts in batched provider calls (bulk ingest); null without an embedder. */
+  async embedMany(texts: string[]): Promise<Float32Array[] | null> {
+    if (!this.opts.embedder || !texts.length) return null;
+    return (await this.opts.embedder(texts)).map((v) => Float32Array.from(v as ArrayLike<number>));
+  }
   /** Embed entity profile texts that changed since their last embedding (needs an embedder). */
   async embedEntities(): Promise<number> {
     if (!this.opts.embedder) return 0;

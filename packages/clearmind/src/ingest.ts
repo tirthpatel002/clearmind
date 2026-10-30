@@ -668,10 +668,15 @@ export async function ingestPath(cm: Clearmind | null, path: string, o: IngestOp
   const es = !dry && cm!.entityCfg.enabled ? cm!.entities : null;
   const ent = (name: string, type: string) => es!.upsert(name, type).id;
 
+  let sinceSave = 0;
   const writeChunks = async (rel: string, fileHash: string, chunks: Chunk[], meta: (c: Chunk) => { tags: string[]; visibleTo: string[]; extra: Record<string, unknown> }, after?: (c: Chunk, memId: string) => void) => {
     const old = prev[rel];
     const out: Record<string, { hash: string; id: string }> = {};
     let changed = false;
+    // one batched embedding request set per file instead of one call per memory
+    const todo = dry ? [] : chunks.filter((c) => { const w = old?.chunks[c.id]; return !(w && w.hash === sha(c.text)) && c.text.length <= 4000; });
+    const vecs = new Map<string, Float32Array>();
+    if (todo.length > 1) { const vs = await cm!.embedMany(todo.map((c) => c.text.trim())); vs?.forEach((v, i) => vecs.set(todo[i]!.id, v)); }
     for (const c of chunks) {
       res.chunks++;
       if (c.text.length > 4000) throw new Error(`ingest: chunk ${rel}#${c.id} is ${c.text.length} chars (cap 4000)`);
@@ -683,13 +688,16 @@ export async function ingestPath(cm: Clearmind | null, path: string, o: IngestOp
       res.chatInputChars.push(Math.min(c.text.length, 3000));
       if (dry) { out[c.id] = { hash: ch, id: "" }; continue; }
       const m = meta(c);
-      const mem = await cm!.remember(c.text, { key: keyOf(rel, c.id), dedup: false, ...m });
+      const emb = vecs.get(c.id);
+      const mem = await cm!.remember(c.text, { key: keyOf(rel, c.id), dedup: false, ...m, ...(emb ? { embedding: emb } : {}) });
       out[c.id] = { hash: ch, id: mem.id };
       res.written++;
       after?.(c, mem.id);
     }
     for (const [cid, v] of Object.entries(old?.chunks ?? {})) if (!out[cid]) { changed = true; if (!dry && v.id && (await cm!.retire(v.id))) res.retired++; else if (dry) res.retired++; }
     next[rel] = { hash: fileHash, chunks: out };
+    // checkpoint so an interrupted run resumes (written chunks are then unchanged; keys supersede on rewrite)
+    if (!dry && mPath && ++sinceSave >= 10) { sinceSave = 0; man.roots[abs] = { commit: sel.commit, at: new Date().toISOString(), files: { ...prev, ...next } }; writeFileSync(mPath, JSON.stringify(man)); }
     return changed;
   };
 
