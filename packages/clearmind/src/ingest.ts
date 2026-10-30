@@ -746,7 +746,18 @@ export async function ingestPath(cm: Clearmind | null, path: string, o: IngestOp
       let d = dirOf(g.rel); node(d).files.push(g.rel);
       while (d !== ".") { const p = dirOf(d); node(p).subdirs.add(d); d = p; }
     }
-    for (const [d, v] of [...dirs].sort()) {
+    const visOf = (f: string) => byFile.get(f)?.fc.visibleTo ?? o.visibleTo ?? ["workspace"];
+    const visKey = (l: string[]) => [...new Set(l)].sort().join(",");
+    for (const [d, v0] of [...dirs].sort()) {
+      // Privacy: a directory overview lists file names and blurbs, so it only shows what its audience can read.
+      // Whole subtree with one visibility: the overview inherits it. Mixed: the overview keeps the default and lists
+      // only files (and subdirs holding files) with that visibility; private files keep their own summaries and acl.
+      const sub = (x: string) => got.filter((g) => x === "." || g.rel.startsWith(`${x}/`)).map((g) => g.rel);
+      const keys = new Set(sub(d).map((f) => visKey(visOf(f))));
+      const dirVis = keys.size === 1 ? visOf(sub(d)[0]!) : (o.visibleTo ?? ["workspace"]);
+      const ok = (f: string) => visKey(visOf(f)) === visKey(dirVis);
+      const v = { files: v0.files.filter(ok), subdirs: new Set([...v0.subdirs].filter((x) => sub(x).some(ok))) };
+      if (!v.files.length && !v.subdirs.size) continue;
       const under = got.filter((g) => d === "." || g.rel.startsWith(`${d}/`));
       const outside = new Set<string>(), inbound = new Set<string>();
       for (const g of under) for (const x of dependsOn.get(g.rel) ?? []) if (!(d === "." || x.startsWith(`${d}/`))) outside.add(dirOf(x));
@@ -765,7 +776,7 @@ export async function ingestPath(cm: Clearmind | null, path: string, o: IngestOp
       const dirEnt = es ? ent(d === "." ? "(repo root)" : `${d}/`, "directory") : null;
       await writeChunks(prel, sha(lines.join("\n")), chunks, () => ({
         tags: [`kind-dir`, `d-${sha(d).slice(0, 10)}`, ...(d === "." ? [] : [`dir-${d.split("/")[0]}`]), ...(o.tags ?? [])],
-        visibleTo: o.visibleTo ?? ["workspace"],
+        visibleTo: dirVis,
         extra: {
           source: { path: d, root: abs, commit: sel.commit, kind: "dir" },
           context: { kind: "dir", dir: d, files: v.files, subdirs: [...v.subdirs], dependsOnDirs: [...outside], usedByDirs: [...inbound] },

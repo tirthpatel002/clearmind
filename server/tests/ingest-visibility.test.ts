@@ -22,7 +22,7 @@ describe("ingest honours frontmatter visibleTo", () => {
     const src = (id: string) => JSON.parse((db.prepare("SELECT extra FROM lessons WHERE lesson_id=?").get(id) as any).extra).source.path as string;
     const seen = async (viewer?: { id: string; admin?: boolean }) => {
       const items = (await cm.list(false, viewer)) as any[];
-      return new Set(items.map((m) => src(m.id).split("/").slice(0, 2).join("/")));
+      return new Set(items.filter((m) => !(m.tags ?? []).includes("kind-dir")).map((m) => src(m.id).split("/").slice(0, 2).join("/")));
     };
     const all = await seen({ id: "admin", admin: true });
     expect(all.has("judges/dhruv-diddi") && all.has("judges/evan-rimer") && [...all].some((p) => p.startsWith("sponsors/"))).toBe(true);
@@ -34,6 +34,12 @@ describe("ingest honours frontmatter visibleTo", () => {
     const g = await seen({ id: "guest" });
     expect([...g].every((p) => p.startsWith("sponsors/"))).toBe(true);
     expect(g.size).toBeGreaterThan(0);
+    // directory overviews never list another principal's files to guest or to a different judge
+    const dirText = async (viewer: { id: string }) => ((await cm.list(false, viewer)) as any[]).filter((m) => (m.tags ?? []).includes("kind-dir")).map((m) => String(m.text)).join("\n");
+    expect(await dirText({ id: "guest" })).not.toMatch(/judges\//);
+    const dx = await dirText({ id: "judge-dhruv-diddi" });
+    expect(dx).toMatch(/dhruv-diddi/);
+    expect(dx).not.toMatch(/evan-rimer/);
     const acl = db.prepare("SELECT count(*) n FROM cm_acl WHERE item_kind='memory' AND principal='judge-dhruv-diddi'").get() as any;
     expect(acl.n).toBeGreaterThan(0);
     await cm.close();
