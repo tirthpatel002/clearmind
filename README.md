@@ -87,7 +87,7 @@ node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/seed.ts ./data
 ```bash
 ./node_modules/.bin/tsx scripts/tavily-research.ts                         # default: dry run, prints plan + credit estimate
 ./node_modules/.bin/tsx scripts/tavily-research.ts --mock --out /tmp/tv    # offline MOCK files (mock: true)
-node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/tavily-research.ts --run --max-credits 500  # live; skips existing files unless --force
+node --env-file=$HOME/.secrets/hackathon.env --import tsx scripts/tavily-research.ts --run --max-credits 400  # live; skips existing files unless --force
 ```
 
 **Production** (one port: built UI + API):
