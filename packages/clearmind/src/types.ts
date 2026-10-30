@@ -15,6 +15,8 @@ export interface Memory {
   confidence: number;
   confirmations: number;
   score?: number | undefined;
+  /** Principals allowed to see this memory (absent = workspace). */
+  visibleTo?: string[];
 }
 
 export interface MemoryPage {

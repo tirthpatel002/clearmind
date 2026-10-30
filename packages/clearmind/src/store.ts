@@ -31,6 +31,7 @@ import { normScope } from "./scopes.js";
 import { SpendLedger } from "./spend.js";
 import { EntityStore, type EntityDetail } from "./entities.js";
 import { extractEntities } from "./extract-entities.js";
+import { aclSql, allows, fullAccess, normVisibleTo, principalsOf, WORKSPACE, type Viewer } from "./visibility.js";
 import { cleanTitle, heuristicTitle, readTitles, titleKey, writeTitles } from "./titles.js";
 import type {
   AccessLogEntry, AskResult, Conflict, ExtractedFact, Grant, Graph, GraphEdges, ImportFormat, ImportResult,
@@ -153,7 +154,9 @@ export class Clearmind {
     this.sql = new DatabaseSync(join(this.opts.dir, "memory.db"));
     this.sql.exec(`PRAGMA busy_timeout=3000;
       CREATE INDEX IF NOT EXISTS idx_lessons_cm_created ON lessons(namespace, user_id, agent_id, status, created_at, lesson_id);
-      CREATE INDEX IF NOT EXISTS idx_lessons_cm_updated ON lessons(namespace, user_id, agent_id, updated_at);`);
+      CREATE INDEX IF NOT EXISTS idx_lessons_cm_updated ON lessons(namespace, user_id, agent_id, updated_at);
+      CREATE TABLE IF NOT EXISTS cm_acl (item_kind TEXT NOT NULL, item_id TEXT NOT NULL, principal TEXT NOT NULL, PRIMARY KEY (item_kind, item_id, principal)) WITHOUT ROWID;
+      CREATE INDEX IF NOT EXISTS idx_cm_acl_principal ON cm_acl(item_kind, principal, item_id);`);
     return this.sql;
   }
 
@@ -175,6 +178,7 @@ export class Clearmind {
       createdAt: l.createdAt,
       confidence: this.effConf(l.confidence, last),
       confirmations: Number(l.extra.confirmations ?? 0),
+      ...(Array.isArray(l.extra.visibleTo) ? { visibleTo: l.extra.visibleTo as string[] } : {}),
       ...(l.score !== undefined ? { score: l.score } : {}),
     };
   };
@@ -192,6 +196,7 @@ export class Clearmind {
       createdAt: r.created_at,
       confidence: this.effConf(r.confidence, String(x.lastConfirmedAt ?? r.created_at)),
       confirmations: Number(x.confirmations ?? 0),
+      ...(Array.isArray(x.visibleTo) ? { visibleTo: x.visibleTo } : {}),
     };
   }
 
@@ -214,7 +219,7 @@ export class Clearmind {
    */
   async remember(
     text: string,
-    o: { tags?: string[]; key?: string; supersedes?: string; confidence?: number; embedding?: Float32Array } = {},
+    o: { tags?: string[]; key?: string; supersedes?: string; confidence?: number; embedding?: Float32Array; visibleTo?: string[] } = {},
   ): Promise<Memory & { confirmed?: boolean }> {
     text = String(text ?? "").trim();
     if (!text) throw new Error("memory text is empty");
@@ -235,7 +240,9 @@ export class Clearmind {
         .prepare(`SELECT lesson_id id, text, created_at createdAt, status FROM lessons
           WHERE namespace=? AND user_id=? AND agent_id=? AND status='active'`)
         .all(...this.w) as any[];
-      const dup = findDuplicate(text, active, this.cfg.duplicates.threshold);
+      // only an item with the same visibility counts as a duplicate (never confirm into someone else's private memory)
+      const want = normVisibleTo(o.visibleTo).sort().join(","), vis = this.aclOf(db, "memory", active.map((a) => a.id));
+      const dup = findDuplicate(text, active.filter((a) => (vis.get(a.id) ?? [WORKSPACE]).sort().join(",") === want), this.cfg.duplicates.threshold);
       if (dup) return { ...(await this.confirm(dup.id)), confirmed: true };
     }
     const at = this.nowIso();
@@ -247,15 +254,17 @@ export class Clearmind {
       createdAt: at,
       confidence: o.confidence ?? this.cfg.confidence.initial,
       ...(o.embedding ? { embedding: o.embedding } : {}),
-      extra: { tags, ...(o.key ? { key: o.key } : {}), confirmations: 0, lastConfirmedAt: at },
+      extra: { tags, ...(o.key ? { key: o.key } : {}), confirmations: 0, lastConfirmedAt: at, ...(o.visibleTo ? { visibleTo: normVisibleTo(o.visibleTo) } : {}) },
     });
+    if (o.visibleTo) this.writeAcl(db, "memory", l.lessonId, normVisibleTo(o.visibleTo));
     if (this.entityCfg.enabled) await this.linkEntities(l.lessonId, text);
     return this.toMemory(l);
   }
 
   /** Correct a memory: writes a new version and marks the old one replaced. Tags/key carry over. */
-  async update(id: string, text: string): Promise<Memory> {
+  async update(id: string, text: string, o: { visibleTo?: string[]; viewer?: Viewer } = {}): Promise<Memory> {
     const old = await this.mem.current(this.scope, id);
+    if (!(await this.canSee(old.lessonId, o.viewer))) throw new Error("no such memory");
     if (this.learningOn) {
       // a user correction is explicit evidence the old memory was wrong: one Beta failure
       const st = learnState(old); st.f += 1;
@@ -265,7 +274,140 @@ export class Clearmind {
       tags: (old.extra.tags as string[]) ?? [],
       key: (old.extra.key as string) ?? undefined,
       supersedes: old.lessonId,
+      visibleTo: o.visibleTo ?? (old.extra.visibleTo as string[] | undefined) ?? (await this.visibleToOf(old.lessonId)),
     });
+  }
+
+  // ----- visibility (see visibility.ts) -----
+
+  private writeAcl(db: DatabaseSync, kind: string, id: string, to: string[]): void {
+    db.prepare(`DELETE FROM cm_acl WHERE item_kind=? AND item_id=?`).run(kind, id);
+    const ins = db.prepare(`INSERT OR IGNORE INTO cm_acl (item_kind,item_id,principal) VALUES (?,?,?)`);
+    for (const p of to) ins.run(kind, id, p);
+  }
+  /** id -> principals for items that have explicit acl rows (absent = workspace). */
+  private aclOf(db: DatabaseSync, kind: string, ids: string[]): Map<string, string[]> {
+    const out = new Map<string, string[]>();
+    if (!ids.length) return out;
+    const rows = db.prepare(`SELECT item_id, principal FROM cm_acl WHERE item_kind=? AND item_id IN (SELECT value FROM json_each(?))`).all(kind, JSON.stringify(ids)) as any[];
+    for (const r of rows) (out.get(r.item_id) ?? out.set(r.item_id, []).get(r.item_id)!).push(r.principal);
+    return out;
+  }
+  /** A memory's visibleTo (["workspace"] when it has no acl). */
+  async visibleToOf(id: string, kind: "memory" | "entity" = "memory"): Promise<string[]> {
+    return this.aclOf(await this.db(), kind, [id]).get(id) ?? [WORKSPACE];
+  }
+  /** Change who can see a memory (owner/admin action). */
+  async setVisibility(id: string, visibleTo: string[]): Promise<string[]> {
+    const l = await this.mem.current(this.scope, id), to = normVisibleTo(visibleTo);
+    await this.mem.store.updateLesson(this.scope, l.lessonId, { extra: { ...l.extra, visibleTo: to } });
+    this.writeAcl(await this.db(), "memory", l.lessonId, to);
+    this.statsCache = null;
+    return to;
+  }
+  /** Give an entity its own acl (overrides "visible through its memories"). Pass null to clear. */
+  async setEntityVisibility(entityId: string, visibleTo: string[] | null): Promise<void> {
+    const db = await this.db();
+    if (visibleTo === null) db.prepare(`DELETE FROM cm_acl WHERE item_kind='entity' AND item_id=?`).run(entityId);
+    else this.writeAcl(db, "entity", entityId, normVisibleTo(visibleTo));
+  }
+  /** SQL fragment + params: memory column `col` visible to the viewer ("1" when unrestricted). */
+  private memVis(v: Viewer | undefined, col = "lesson_id"): [string, string[]] {
+    return fullAccess(v) ? ["1", []] : [aclSql("memory", col), principalsOf(v!)];
+  }
+  /** Can this viewer see the memory? */
+  async canSee(id: string, viewer?: Viewer): Promise<boolean> {
+    if (fullAccess(viewer)) return true;
+    return (await this.filterVisible([id], viewer)).length > 0;
+  }
+  /** The subset of ids visible to the viewer, in the given order (one indexed query). */
+  private filterSync(ids: string[], viewer?: Viewer): string[] {
+    if (fullAccess(viewer) || !ids.length || !this.sql) return ids;
+    const [w, p] = this.memVis(viewer, "j.value");
+    const ok = new Set((this.sql.prepare(`SELECT j.value id FROM json_each(?) j WHERE ${w}`).all(JSON.stringify(ids), ...p) as any[]).map((r) => r.id as string));
+    return ids.filter((id) => ok.has(id));
+  }
+  async filterVisible(ids: string[], viewer?: Viewer): Promise<string[]> {
+    await this.db();
+    return this.filterSync(ids, viewer);
+  }
+  private async filterMems<T extends { id: string }>(xs: T[], viewer?: Viewer): Promise<T[]> {
+    if (fullAccess(viewer)) return xs;
+    const ok = new Set(await this.filterVisible(xs.map((x) => x.id), viewer));
+    return xs.filter((x) => ok.has(x.id));
+  }
+  /** All memory ids (any status) this viewer can see, or null when unrestricted. For callers that read memory.db directly. */
+  async visibleMemoryIds(viewer?: Viewer): Promise<Set<string> | null> {
+    if (fullAccess(viewer)) return null;
+    const [w, p] = this.memVis(viewer);
+    return new Set(((await this.db()).prepare(`SELECT lesson_id FROM lessons WHERE namespace=? AND user_id=? AND agent_id=? AND ${w}`).all(...this.w, ...p) as any[]).map((r) => r.lesson_id));
+  }
+  /**
+   * Entity ids this viewer can see, or null when unrestricted. Visible = own acl allows, or (no own acl) at least one
+   * visible memory links to it. Unlinked entities without an acl are hidden from restricted viewers.
+   */
+  async visibleEntityIds(viewer?: Viewer): Promise<Set<string> | null> {
+    if (fullAccess(viewer)) return null;
+    const db = await this.entDb(), [w, p] = this.memVis(viewer, "m.memory_id"), pr = principalsOf(viewer!);
+    const rows = db.prepare(`SELECT e.id FROM ent.entities e WHERE e.user_id=? AND (
+        EXISTS (SELECT 1 FROM cm_acl a WHERE a.item_kind='entity' AND a.item_id=e.id AND a.principal IN (?,?))
+        OR (NOT EXISTS (SELECT 1 FROM cm_acl a WHERE a.item_kind='entity' AND a.item_id=e.id)
+          AND EXISTS (SELECT 1 FROM ent.memory_entities m JOIN lessons l ON l.lesson_id=m.memory_id AND l.namespace=? AND l.user_id=? AND l.agent_id=?
+            WHERE m.entity_id=e.id AND ${w})))`).all(this.userId, ...pr, ...this.w, ...p) as any[];
+    return new Set(rows.map((r) => r.id as string));
+  }
+  private entAttached = false;
+  private async entDb(): Promise<DatabaseSync> {
+    const db = await this.db();
+    if (!this.entAttached) { this.entities; db.exec(`ATTACH DATABASE '${join(this.opts.dir, "entities.db").replaceAll("'", "''")}' AS ent`); this.entAttached = true; }
+    return db;
+  }
+  /** Entity visible to the viewer? */
+  async canSeeEntity(id: string, viewer?: Viewer): Promise<boolean> {
+    const s = await this.visibleEntityIds(viewer);
+    return !s || s.has(id);
+  }
+  /** Entity list for a viewer (same options as EntityStore.list); total/counts are for what the viewer can see. */
+  async entityList(o: { type?: string; q?: string; limit?: number; offset?: number } = {}, viewer?: Viewer) {
+    const es = this.entities, s = await this.visibleEntityIds(viewer);
+    if (!s) return { entities: es.list(o), total: es.total(), counts: es.counts() };
+    const ids = [...s], all = es.list({ ...o, limit: 10_000, offset: 0, only: ids });
+    const counts: Record<string, number> = {};
+    for (const e of es.list({ limit: 10_000, only: ids })) counts[e.type ?? ""] = (counts[e.type ?? ""] ?? 0) + 1;
+    const off = o.offset ?? 0;
+    return { entities: all.slice(off, off + Math.min(o.limit ?? 100, 10_000)), total: s.size, counts };
+  }
+  /** Entity detail with memories, fields and relations limited to what the viewer can see; null when hidden. */
+  async entityDetail(id: string, viewer?: Viewer): Promise<EntityDetail | null> {
+    const d = this.entities.detail(id);
+    if (!d || fullAccess(viewer)) return d;
+    const s = await this.visibleEntityIds(viewer);
+    if (!s!.has(id)) return null;
+    const mem = new Set(await this.filterVisible([...new Set([...d.memoryIds, ...d.relations.map((r) => r.memoryId!).filter(Boolean),
+      ...Object.values(d.fields).flatMap((f) => f.memoryIds), ...d.history.flatMap((f) => f.memoryIds)])], viewer));
+    const fieldOk = (f: { memoryIds: string[] }) => !f.memoryIds.length || f.memoryIds.some((m) => mem.has(m));
+    return {
+      ...d,
+      memoryIds: d.memoryIds.filter((m) => mem.has(m)),
+      memoryCount: d.memoryIds.filter((m) => mem.has(m)).length,
+      fields: Object.fromEntries(Object.entries(d.fields).filter(([, f]) => fieldOk(f)).map(([k, f]) => [k, { ...f, memoryIds: f.memoryIds.filter((m) => mem.has(m)) }])),
+      history: d.history.filter(fieldOk),
+      relations: d.relations.filter((r) => s!.has(r.from) && s!.has(r.to) && (!r.memoryId || mem.has(r.memoryId))),
+    };
+  }
+  /** Memory-entity links where both ends are visible. */
+  async entityLinks(viewer?: Viewer) {
+    const ls = this.entities.links();
+    if (fullAccess(viewer)) return ls;
+    const s = (await this.visibleEntityIds(viewer))!, mem = new Set(await this.filterVisible([...new Set(ls.map((l) => l.memoryId))], viewer));
+    return ls.filter((l) => s.has(l.entityId) && mem.has(l.memoryId));
+  }
+  /** Relations where both entities (and the source memory, when recorded) are visible. */
+  async entityRelations(viewer?: Viewer, entityId?: string) {
+    const rs = this.entities.relations(entityId);
+    if (fullAccess(viewer)) return rs;
+    const s = (await this.visibleEntityIds(viewer))!, mem = new Set(await this.filterVisible([...new Set(rs.map((r) => r.memoryId!).filter(Boolean))], viewer));
+    return rs.filter((r) => s.has(r.from) && s.has(r.to) && (!r.memoryId || mem.has(r.memoryId)));
   }
 
   /** Confirm a memory is still true: confidence rises and the decay clock restarts. */
@@ -283,9 +425,11 @@ export class Clearmind {
 
   // ----- recall -----
 
-  async recall(query: string, k = 5, tags?: string[]): Promise<Memory[]> {
-    let got = (await this.mem.recall(this.scope, query, 50)).map(this.toMemory);
-    if (this.entityCfg.enabled && this.entityCfg.recallBoost > 0) got = await this.entityBoost(query, got);
+  async recall(query: string, k = 5, tags?: string[], viewer?: Viewer): Promise<Memory[]> {
+    // restricted viewers: hidden candidates are dropped right after retrieval, before re-ranking, abstention and any prompt
+    let got = (await this.mem.recall(this.scope, query, fullAccess(viewer) ? 50 : 200)).map(this.toMemory);
+    got = await this.filterMems(got, viewer);
+    if (this.entityCfg.enabled && this.entityCfg.recallBoost > 0) got = await this.entityBoost(query, got, viewer);
     return got.filter((m) => !tags || tags.includes("*") || m.tags.some((t) => tags.includes(t))).slice(0, k);
   }
 
@@ -293,9 +437,9 @@ export class Clearmind {
    * Recall plus an answerability check (see abstain.ts): cosine(query, top memory) blended with lexical
    * coverage, lexical only when there are no vectors. Below the threshold no memories are returned.
    */
-  async recallWithEvidence(query: string, k = 5, tags?: string[]): Promise<RecallEvidence> {
+  async recallWithEvidence(query: string, k = 5, tags?: string[], viewer?: Viewer): Promise<RecallEvidence> {
     const f = this.features;
-    const got = await this.recallFeatured(query, k, tags, f);
+    const got = await this.recallFeatured(query, k, tags, f, viewer);
     if (!got.length) return { memories: [], evidence: 0, cosine: null, lexical: 0, abstained: true, candidates: [] };
     const top = got[0]!;
     const lexical = lexicalCoverage(query, top.text);
@@ -357,6 +501,7 @@ export class Clearmind {
     await this.mem.init();
     this.statsCache = null;
     const ok = await hardForget(this.mem.store, this.scope, id, { audit: this.engine.audit ?? undefined });
+    if (ok) (await this.db()).prepare(`DELETE FROM cm_acl WHERE item_kind='memory' AND item_id=?`).run(id);
     if (ok && this.entityCfg.enabled) this.entities.unlinkMemory(id);
     return ok;
   }
@@ -414,9 +559,10 @@ export class Clearmind {
     return todo.length;
   }
   /** Entities matching a query: names/aliases it mentions, name/alias text, field/type text, then meaning over profiles. */
-  async entitySearch(query: string, k = 5): Promise<{ entity: EntityDetail; score: number; via: "name" | "text" | "semantic" }[]> {
+  async entitySearch(query: string, k = 5, viewer?: Viewer): Promise<{ entity: EntityDetail; score: number; via: "name" | "text" | "semantic" }[]> {
     const es = this.entities;
     if (!es.total()) return [];
+    const vis = await this.visibleEntityIds(viewer);
     const out = new Map<string, { id: string; score: number; via: "name" | "text" | "semantic" }>();
     for (const f of extractEntities(query, (n) => es.resolveId(n)).entities) { const id = es.resolveId(f.name); if (id) out.set(id, { id, score: 1, via: "name" }); }
     for (const e of es.list({ q: query, limit: 20 })) if (!out.has(e.id)) out.set(e.id, { id: e.id, score: 0.95, via: "name" });
@@ -426,16 +572,19 @@ export class Clearmind {
       const [q] = await this.opts.embedder([query]);
       if (q) for (const x of es.embeddings()) if (x.v && !out.has(x.id)) { const s = cosineSim(q, x.v); if (s >= this.entityCfg.semanticMin) out.set(x.id, { id: x.id, score: s, via: "semantic" }); }
     }
-    return [...out.values()].sort((a, b) => b.score - a.score).slice(0, k).map((x) => ({ entity: es.detail(x.id)!, score: Number(x.score.toFixed(4)), via: x.via }));
+    const ranked = [...out.values()].filter((x) => !vis || vis.has(x.id)).sort((a, b) => b.score - a.score).slice(0, k);
+    const res = [];
+    for (const x of ranked) { const d = await this.entityDetail(x.id, viewer); if (d) res.push({ entity: d, score: Number(x.score.toFixed(4)), via: x.via }); }
+    return res;
   }
   /** Recall re-rank: memories linked to an entity the query names (or means) move up; missing linked ones join the pool. */
-  private async entityBoost(query: string, got: Memory[]): Promise<Memory[]> {
-    const hits = await this.entitySearch(query, 3).catch(() => []);
+  private async entityBoost(query: string, got: Memory[], viewer?: Viewer): Promise<Memory[]> {
+    const hits = await this.entitySearch(query, 3, viewer).catch(() => []);
     if (!hits.length) return got;
     const linked = new Map<string, number>();
     for (const h of hits) for (const id of h.entity.memoryIds) linked.set(id, Math.max(linked.get(id) ?? 0, h.score));
     const have = new Set(got.map((m) => m.id));
-    for (const id of [...linked.keys()].filter((id) => !have.has(id)).slice(0, 10)) {
+    for (const id of (await this.filterVisible([...linked.keys()].filter((id) => !have.has(id)), viewer)).slice(0, 10)) {
       try { const l = await this.mem.current(this.scope, id); if (l.status === "active") got.push(this.toMemory(l)); } catch { /* forgotten */ }
     }
     const b = this.entityCfg.recallBoost, n = Math.max(1, got.length);
@@ -460,12 +609,12 @@ export class Clearmind {
   get features(): Features { return resolveFeatures((this.cfg as any).features); }
 
   /** recall() plus the opt-in time-aware (6), decomposition (7) and injection-drop (17) stages. */
-  private async recallFeatured(query: string, k: number, tags: string[] | undefined, f: Features): Promise<Memory[]> {
+  private async recallFeatured(query: string, k: number, tags: string[] | undefined, f: Features, viewer?: Viewer): Promise<Memory[]> {
     const pool = f.time.mode !== "off" ? Math.max(k, f.time.pool) : k;
     const parts = f.decompose.enabled ? decomposeQuery(query, f.decompose.maxParts) : [query];
     let got = parts.length > 1
-      ? interleave(await Promise.all([query, ...parts].map((q) => this.recall(q, pool, tags))), pool)
-      : await this.recall(query, pool, tags);
+      ? interleave(await Promise.all([query, ...parts].map((q) => this.recall(q, pool, tags, viewer))), pool)
+      : await this.recall(query, pool, tags, viewer);
     if (f.injection.mode === "drop") got = got.filter((m) => !detectInjection(m.text).length);
     if (f.time.mode !== "off") got = applyTimeAwareRecall(got, query, f.time, { referenceDate: this.opts.now?.() ?? new Date(), k: pool });
     return got.slice(0, k);
@@ -484,19 +633,30 @@ export class Clearmind {
     return qe ? cosineSim(qe, v) : null;
   }
 
-  async list(includeReplaced = false): Promise<Memory[]> {
+  async list(includeReplaced = false, viewer?: Viewer): Promise<Memory[]> {
+    if (!fullAccess(viewer)) {
+      // SQL-filtered (indexed acl) for restricted viewers
+      const st = includeReplaced ? ["active", "replaced"] : ["active"], [w, p] = this.memVis(viewer);
+      const rows = (await this.db()).prepare(`SELECT lesson_id, text, status, replaced_by, created_at, confidence, extra FROM lessons
+        WHERE namespace=? AND user_id=? AND agent_id=? AND status IN (${st.map(() => "?").join(",")}) AND ${w} ORDER BY created_at, lesson_id`).all(...this.w, ...st, ...p) as any[];
+      return rows.map((r) => this.rowMemory(r));
+    }
     const lessons = await this.mem.listLessons(this.scope, { status: includeReplaced ? ["active", "replaced"] : ["active"] });
     return lessons.map(this.toMemory);
   }
 
-  async history(id: string): Promise<Memory[]> {
-    return (await this.mem.history(this.scope, id)).map(this.toMemory);
+  async history(id: string, viewer?: Viewer): Promise<Memory[]> {
+    const h = (await this.mem.history(this.scope, id)).map(this.toMemory);
+    if (fullAccess(viewer)) return h;
+    if (!(await this.canSee(id, viewer))) throw new Error("no such memory");
+    return this.filterMems(h, viewer);
   }
 
   // ----- learning -----
 
-  private async facts(includeReplaced: boolean): Promise<Fact[]> {
-    const ls = await this.mem.listLessons(this.scope, { status: includeReplaced ? ["active", "replaced"] : ["active"] });
+  private async facts(includeReplaced: boolean, viewer?: Viewer): Promise<Fact[]> {
+    let ls = await this.mem.listLessons(this.scope, { status: includeReplaced ? ["active", "replaced"] : ["active"] });
+    if (!fullAccess(viewer)) { const ok = new Set(await this.filterVisible(ls.map((l) => l.lessonId), viewer)); ls = ls.filter((l) => ok.has(l.lessonId)); }
     return ls.map((l) => ({
       id: l.lessonId,
       text: l.text,
@@ -509,20 +669,21 @@ export class Clearmind {
   }
 
   /** Active memories that contradict each other. Resolve with update/supersede. */
-  async conflicts(): Promise<Conflict[]> {
-    return detectConflicts(await this.facts(false), this.cfg.conflicts);
+  async conflicts(viewer?: Viewer): Promise<Conflict[]> {
+    return detectConflicts(await this.facts(false, viewer), this.cfg.conflicts);
   }
 
   /** Recurring patterns across all versions (replaced versions count as evidence). */
-  async patterns(o: { minSupport?: number; minDays?: number } = {}): Promise<Pattern[]> {
-    return detectPatterns(await this.facts(true), { ...this.cfg.patterns, ...o });
+  async patterns(o: { minSupport?: number; minDays?: number; viewer?: Viewer } = {}): Promise<Pattern[]> {
+    const { viewer, ...po } = o;
+    return detectPatterns(await this.facts(true, viewer), { ...this.cfg.patterns, ...po });
   }
 
   // ----- paging + aggregates (SQL, scoped to this user) -----
 
   /** Newest first. cursor = opaque "createdAt|id". scope matches any tag. q is a case-insensitive substring. */
   async page(
-    o: { limit?: number; cursor?: string | null; q?: string; scope?: string; status?: MemoryStatusFilter } = {},
+    o: { limit?: number; cursor?: string | null; q?: string; scope?: string; status?: MemoryStatusFilter; viewer?: Viewer } = {},
   ): Promise<MemoryPage> {
     const db = await this.db();
     const limit = Math.min(200, Math.max(1, o.limit ?? this.cfg.ui.pageSize));
@@ -544,6 +705,11 @@ export class Clearmind {
       sql += ` AND text LIKE ? ESCAPE '\\'`;
       p.push(`%${o.q.trim().replace(/[\\%_]/g, (c) => "\\" + c)}%`);
     }
+    if (!fullAccess(o.viewer)) {
+      const [w, vp] = this.memVis(o.viewer);
+      sql += ` AND ${w}`;
+      p.push(...vp);
+    }
     sql += ` ORDER BY created_at DESC, lesson_id DESC LIMIT ${limit + 1}`;
     const rows = db.prepare(sql).all(...p) as any[];
     const items = rows.slice(0, limit).map((r) => this.rowMemory(r));
@@ -552,7 +718,8 @@ export class Clearmind {
   }
 
   /** Aggregates, cached until memories change (and at most a minute, since confidence decays with time). */
-  async stats(): Promise<MemoryStats> {
+  async stats(viewer?: Viewer): Promise<MemoryStats> {
+    if (!fullAccess(viewer)) return this.computeStats(viewer);
     const key = (await this.signature()) + "|" + Math.floor(this.now().getTime() / 60000);
     if (this.statsCache?.key === key) return this.statsCache.value;
     const value = await this.computeStats();
@@ -560,19 +727,21 @@ export class Clearmind {
     return value;
   }
 
-  private async computeStats(): Promise<MemoryStats> {
+  private async computeStats(viewer?: Viewer): Promise<MemoryStats> {
     const db = await this.db();
-    const where = `FROM lessons WHERE namespace=? AND user_id=? AND agent_id=?`;
-    const byStatus = db.prepare(`SELECT status, COUNT(*) n ${where} GROUP BY status`).all(...this.w) as any[];
+    const [vw, vp] = this.memVis(viewer);
+    const where = `FROM lessons WHERE namespace=? AND user_id=? AND agent_id=? AND ${vw}`;
+    const W = [...this.w, ...vp];
+    const byStatus = db.prepare(`SELECT status, COUNT(*) n ${where} GROUP BY status`).all(...W) as any[];
     const by = Object.fromEntries(byStatus.map((r) => [r.status, r.n]));
     const perScope = db
       .prepare(`SELECT COALESCE(json_extract(extra,'$.tags[0]'),'other') t, COUNT(*) n ${where} AND status='active'
         GROUP BY t ORDER BY n DESC`)
-      .all(...this.w) as any[];
+      .all(...W) as any[];
     const confs = db
       .prepare(`SELECT confidence c, COALESCE(json_extract(extra,'$.lastConfirmedAt'), created_at) l ${where}
         AND status='active'`)
-      .all(...this.w) as any[];
+      .all(...W) as any[];
     const avg = confs.length ? confs.reduce((s, r) => s + this.effConf(r.c, r.l), 0) / confs.length : 0;
     return {
       active: by.active ?? 0,
@@ -596,7 +765,22 @@ export class Clearmind {
    * Conflicts + titled patterns, cached until memories change.
    * Large sets compute in the background (the stale result is served meanwhile).
    */
-  async insights(o: { wait?: boolean } = {}): Promise<Insights & { stale: boolean }> {
+  async insights(o: { wait?: boolean; viewer?: Viewer } = {}): Promise<Insights & { stale: boolean }> {
+    const full = await this.insightsAll(o);
+    if (fullAccess(o.viewer)) return full;
+    return this.insightsFor(full, o.viewer!);
+  }
+
+  /** Restrict insights to what the viewer can see: conflicts need both sides visible; pattern evidence is cut to visible ids and a pattern with no visible evidence is dropped. */
+  private async insightsFor(full: Insights & { stale: boolean }, viewer: Viewer): Promise<Insights & { stale: boolean }> {
+    const ids = [...new Set([...full.conflicts.flatMap((c) => [c.a, c.b]), ...full.patterns.flatMap((p) => p.evidence)])];
+    const ok = new Set(await this.filterVisible(ids, viewer));
+    const patterns = full.patterns.map((p) => ({ ...p, evidence: p.evidence.filter((e) => ok.has(e)) })).filter((p) => p.evidence.length);
+    const st = await this.stats(viewer);
+    return { ...full, conflicts: full.conflicts.filter((c) => ok.has(c.a) && ok.has(c.b)), patterns, factCount: st.active + st.replaced };
+  }
+
+  private async insightsAll(o: { wait?: boolean } = {}): Promise<Insights & { stale: boolean }> {
     const sig = await this.signature();
     if (this.insightCache?.sig === sig) return { ...this.insightCache.value, stale: false };
     if (!this.insightJob) {
@@ -621,10 +805,11 @@ export class Clearmind {
   }
 
   /** Graph for the constellation: raw nodes when small, per-scope clusters when large (expand one scope with `scope`). */
-  async graph(o: { scope?: string } = {}): Promise<Graph> {
-    const st = await this.stats();
+  async graph(o: { scope?: string; viewer?: Viewer } = {}): Promise<Graph> {
+    const v = o.viewer;
+    const st = await this.stats(v);
     const ui = this.cfg.ui;
-    const ins = await this.insights();
+    const ins = await this.insights({ viewer: v });
     const edgesFor = (nodes: Memory[]): GraphEdges => {
       const ids = new Set(nodes.map((n) => n.id));
       return {
@@ -642,12 +827,12 @@ export class Clearmind {
     };
     const limit = Math.min(200, ui.maxNodes);
     if (!o.scope && st.active <= ui.clusterAbove) {
-      const nodes = (await this.page({ status: "all", limit })).items;
+      const nodes = (await this.page({ status: "all", limit, viewer: v })).items;
       return { mode: "nodes", total: st.active + st.replaced, nodes, edges: edgesFor(nodes) };
     }
     if (o.scope) {
       const scope = normScope(o.scope);
-      const nodes = (await this.page({ status: "active", scope: o.scope, limit })).items;
+      const nodes = (await this.page({ status: "active", scope: o.scope, limit, viewer: v })).items;
       return { mode: "nodes", scope, total: st.perScope[scope] ?? nodes.length, nodes, edges: edgesFor(nodes) };
     }
     const clusters = Object.entries(st.perScope).map(([scope, count]) => ({ scope, count }));
@@ -656,8 +841,8 @@ export class Clearmind {
 
   // ----- scopes, agents, import -----
 
-  async scopes(): Promise<string[]> {
-    const st = await this.stats();
+  async scopes(viewer?: Viewer): Promise<string[]> {
+    const st = await this.stats(viewer);
     const fromMemories = Object.keys(st.perScope).filter((s) => s !== "other");
     return [...new Set([...this.policy.scopes(this.userId), ...fromMemories])];
   }
@@ -677,7 +862,7 @@ export class Clearmind {
   }
 
   /** Import many memories. Formats: text (one per line), json ([{text,tags?,key?}] or ["..."]), csv (text[,tags][,key] with header). */
-  async importMemories(data: string, format: ImportFormat, o: { defaultScope?: string } = {}): Promise<ImportResult> {
+  async importMemories(data: string, format: ImportFormat, o: { defaultScope?: string; visibleTo?: string[] } = {}): Promise<ImportResult> {
     const { maxBytes, maxItems } = this.cfg.import;
     if (data.length > maxBytes) throw new Error(`import is larger than ${maxBytes} bytes`);
     const items = parseImport(data, format).slice(0, maxItems + 1);
@@ -693,7 +878,7 @@ export class Clearmind {
       }
       try {
         const tags = it.tags?.length ? it.tags : o.defaultScope ? [o.defaultScope] : [];
-        const m = await this.remember(it.text, { tags, key: it.key || undefined });
+        const m = await this.remember(it.text, { tags, key: it.key || undefined, ...(o.visibleTo ? { visibleTo: o.visibleTo } : {}) });
         if (m.confirmed) confirmed++;
         else added++;
       } catch (e) {
@@ -774,10 +959,11 @@ export class Clearmind {
   }
 
   /** An agent reads memories. Purpose is required; every attempt is logged. */
-  async read(req: { agentId: string; purpose?: string | null; tags?: string[]; query: string; k?: number }): Promise<ReadResult> {
-    const c = this.policy.check(this.opts.ownerId, req);
-    const memories = c.decision === "allowed" ? await this.recall(req.query, req.k ?? 5, c.tags) : [];
-    const log = this.policy.record(this.opts.ownerId, req, c, memories.map((m) => m.id));
+  async read(req: { agentId: string; purpose?: string | null; tags?: string[]; query: string; k?: number; viewer?: Viewer }): Promise<ReadResult> {
+    const { viewer, ...pr } = req;
+    const c = this.policy.check(this.opts.ownerId, pr);
+    const memories = c.decision === "allowed" ? await this.recall(req.query, req.k ?? 5, c.tags, viewer) : [];
+    const log = this.policy.record(this.opts.ownerId, pr, c, memories.map((m) => m.id));
     return { decision: c.decision, reason: c.reason, memories, log };
   }
 
@@ -787,19 +973,20 @@ export class Clearmind {
    */
   async ask(
     question: string,
-    req: { agentId?: string; purpose?: string | null; tags?: string[]; k?: number; recalled?: RecallEvidence } = {},
+    req: { agentId?: string; purpose?: string | null; tags?: string[]; k?: number; recalled?: RecallEvidence; viewer?: Viewer } = {},
   ): Promise<AskResult> {
     if (!this.opts.chat) throw new Error("ask needs a chat model (set NEBIUS_API_KEY via --env-file)");
     const agentId = req.agentId ?? "owner";
     let r: ReadResult;
     if (agentId === "owner") {
       // reuse a recall the caller already ran for this question (no second recall)
-      const memories = (req.recalled ?? (await this.recallWithEvidence(question, req.k ?? 6))).memories;
+      // a caller-supplied recall is re-checked against the viewer, so nothing hidden can reach the prompt
+      const memories = await this.filterMems((req.recalled ?? (await this.recallWithEvidence(question, req.k ?? 6, undefined, req.viewer))).memories, req.viewer);
       const c = { decision: "allowed" as const, reason: "owner", grant: null, tags: ["*"] };
       const ids = memories.map((m) => m.id);
       r = { ...c, memories, log: this.policy.record(this.opts.ownerId, { agentId, purpose: req.purpose ?? "owner-ask" }, c, ids) };
     } else {
-      r = await this.read({ agentId, purpose: req.purpose, tags: req.tags, query: question, k: req.k ?? 6 });
+      r = await this.read({ agentId, purpose: req.purpose, tags: req.tags, query: question, k: req.k ?? 6, viewer: req.viewer });
     }
     if (r.decision === "denied") return { ...r, answer: `Access denied: ${r.reason}`, cited: [] };
     if (!r.memories.length) return { ...r, answer: NO_MEMORY, cited: [], abstained: true };
@@ -904,9 +1091,9 @@ export class Clearmind {
   }
 
   /** id -> text for this user's memories (unknown or foreign ids are simply absent). */
-  async textsFor(ids: string[]): Promise<Record<string, string>> {
+  async textsFor(ids: string[], viewer?: Viewer): Promise<Record<string, string>> {
     await this.db();
-    const rows = this.syncTexts([...new Set(ids)].slice(0, 5000));
+    const rows = this.syncTexts(this.filterSync([...new Set(ids)].slice(0, 5000), viewer));
     return Object.fromEntries(rows.map((r) => [r.id, r.text]));
   }
 

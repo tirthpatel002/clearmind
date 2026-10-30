@@ -65,6 +65,11 @@ function rows(cfg: Config, user: string, active = true): Row[] {
       WHERE namespace='clearmind' AND user_id=? AND agent_id='owner' ${active ? "AND status='active'" : "AND status IN ('active','replaced')"} ORDER BY created_at`).all(user) as Row[];
   } finally { d.close(); }
 }
+/** rows() limited to what the request's viewer may see (visible ids come from the indexed acl). */
+async function vrows(ctx: RouteContext, active = true): Promise<Row[]> {
+  const r = rows(ctx.cfg, ctx.user, active), s = await ctx.cm.visibleMemoryIds(ctx.viewer);
+  return s ? r.filter((x) => s.has(x.lesson_id)) : r;
+}
 const vec = (b: Uint8Array) => new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
 
 /** Approximate tokens (chars/4), used only for the "full history" comparison. */
@@ -118,7 +123,8 @@ export function ledgerSince(cfg: Config, offset: number) {
 export const ledgerSize = (cfg: Config) => { const p = join(cfg.dataDir, "spend.jsonl"); return existsSync(p) ? statSync(p).size : 0; };
 const price = (cfg: Config, m: string) => cfg.nebius.prices[m] ?? { in: 1, out: 3 };
 
-async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
+async function ask(ctx: RouteContext) {
+  const { cm, cfg, user, body, useModel, viewer } = ctx;
   const b = await body(10_000);
   const q = String(b.q ?? "").trim(), session = String(b.session ?? "default").slice(0, 64);
   if (!q) throw new HttpError(400, "question required");
@@ -134,11 +140,11 @@ async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
   if (emb) await emb([q]);
   const embedMs = Math.round(performance.now() - te);
   const t0 = performance.now();
-  const ev = await cm.recallWithEvidence(q, K);
+  const ev = await cm.recallWithEvidence(q, K, undefined, viewer);
   const recallMs = Math.round(performance.now() - t0);
-  const before = new Map(rows(cfg, user).map((r) => [r.lesson_id, learnRow(r, cfg)]));
+  const before = new Map((await vrows(ctx)).map((r) => [r.lesson_id, learnRow(r, cfg)]));
   const t1 = performance.now();
-  const res = await cm.ask(q, { k: K, recalled: ev }); // single recall, reused
+  const res = await cm.ask(q, { k: K, recalled: ev, viewer }); // single recall, reused
   const answerMs = Math.round(performance.now() - t1);
   const readerMs = (res as { usage?: { ms?: number } }).usage?.ms ?? null;
   const calls = ledgerSince(cfg, off).filter((e) => e.user === user);
@@ -146,7 +152,7 @@ async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
   const sum = (xs: any[], k: string) => xs.reduce((a, x) => a + (x[k] ?? 0), 0);
   const costUsd = sum(calls, "usd");
   const promptTokens = sum(chat, "promptTokens"), completionTokens = sum(chat, "completionTokens");
-  const all = rows(cfg, user);
+  const all = await vrows(ctx);
   const fullTokens = all.reduce((a, r) => a + approxTokens(`[${r.lesson_id}] ${r.text}\n`), 0) + approxTokens(q) + 200;
   const rp = price(cfg, cfg.nebius.chatModel);
   const fullUsd = (fullTokens * rp.in + completionTokens * rp.out) / 1e6;
@@ -161,7 +167,7 @@ async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
   if (res.abstained) reason = ev.abstained
     ? (ev.candidates.length ? `No supporting memory found: best evidence ${ev.evidence.toFixed(2)} is below the ${threshold} threshold, so nothing was sent as fact.` : "No supporting memory found: recall returned no candidates.")
     : "No supporting memory found: the reader judged none of the recalled memories relevant.";
-  const after = new Map(rows(cfg, user).map((r) => [r.lesson_id, learnRow(r, cfg)]));
+  const after = new Map((await vrows(ctx)).map((r) => [r.lesson_id, learnRow(r, cfg)]));
   const shown = res.memories.map((m) => ({ id: m.id, text: m.text, createdAt: m.createdAt, score: m.score ?? null }));
   // cited insights: show what Clearmind derived them from
   const ins = new Map(readInsights(cfg, user).insights.filter((i) => i.memoryId).map((i) => [i.memoryId!, i]));
@@ -181,10 +187,11 @@ async function ask({ cm, cfg, user, body, useModel }: RouteContext) {
   };
 }
 
-async function inspect({ cm, cfg, user, query }: RouteContext) {
+async function inspect(ctx: RouteContext) {
+  const { cm, cfg, query, viewer } = ctx;
   const q = String(query.get("q") ?? "").trim();
   if (!q) throw new HttpError(400, "q required");
-  const all = rows(cfg, user);
+  const all = await vrows(ctx);
   const text = new Map(all.map((r) => [r.lesson_id, r.text]));
   const kw = bm25(q, all.map((r) => ({ id: r.lesson_id, text: r.text }))).slice(0, 20);
   const emb = (cm as unknown as { opts: { embedder?: (t: string[]) => Promise<number[][]> } }).opts.embedder;
@@ -198,7 +205,7 @@ async function inspect({ cm, cfg, user, query }: RouteContext) {
   const fused = rrf([kw, vh], a.rrfK);
   const kwRank = new Map(kw.map((x, i) => [x.id, i + 1])), vRank = new Map(vh.map((x, i) => [x.id, i + 1]));
   const t0 = performance.now();
-  const ev = await cm.recallWithEvidence(q, K);
+  const ev = await cm.recallWithEvidence(q, K, undefined, viewer);
   const recallMs = Math.round(performance.now() - t0);
   const kept = new Set(ev.memories.map((m) => m.id));
   const final = ev.candidates.map((m, i) => ({ rank: i + 1, id: m.id, text: m.text, score: m.score ?? null, kept: kept.has(m.id) }));
@@ -214,8 +221,8 @@ async function inspect({ cm, cfg, user, query }: RouteContext) {
   };
 }
 
-function timeline({ cfg, user }: RouteContext) {
-  const rs = rows(cfg, user, false);
+async function timeline(ctx: RouteContext) {
+  const rs = await vrows(ctx, false);
   const byId = new Map(rs.map((r) => [r.lesson_id, r]));
   const items = rs.map((r) => {
     const x = JSON.parse(r.extra || "{}");
@@ -225,30 +232,35 @@ function timeline({ cfg, user }: RouteContext) {
   return { items: items.slice(-200), changed, superseded: items.filter((i) => i.status === "replaced").length };
 }
 
-function learning({ cfg, user, query }: RouteContext) {
+async function learning(ctx: RouteContext) {
+  const { cfg, query } = ctx;
   const on = retr(cfg).learning;
   const ids = (query.get("ids") ?? "").split(",").filter(Boolean);
-  const all = rows(cfg, user).map((r) => learnRow(r, cfg));
+  const all = (await vrows(ctx)).map((r) => learnRow(r, cfg));
+  const seen = new Set(all.map((r) => r.id));
+  for (const r of all) r.links = r.links.filter((l) => seen.has(l.id));
   const pick = ids.length ? all.filter((r) => ids.includes(r.id)) : all.filter((r) => r.count > 0 || r.accesses > 0).sort((a, b) => b.count - a.count).slice(0, 25);
   const text = new Map(all.map((r) => [r.id, r.text]));
   return { enabled: on, experimental: true, items: pick.map((p) => ({ ...p, links: p.links.map((l) => ({ ...l, text: text.get(l.id) ?? "" })) })), model: (null as unknown) };
 }
 
-async function forget({ cm, cfg, user, body }: RouteContext) {
+async function forget({ cm, cfg, user, body, viewer }: RouteContext) {
   const id = String((await body(1000)).id ?? "");
+  if (!(await cm.canSee(id, viewer))) throw new HttpError(404, "no such memory");
   const ok = await cm.forget(id);
   audit(cfg, user, "hard-forget", [id], { ok });
   return { ok, id, gone: !rows(cfg, user, false).some((r) => r.lesson_id === id) };
 }
 
-async function redact({ cm, cfg, user, body, useModel }: RouteContext) {
+async function redact(ctx: RouteContext) {
+  const { cm, cfg, user, body, useModel, viewer } = ctx;
   const id = String((await body(1000)).id ?? "");
-  const r = rows(cfg, user).find((x) => x.lesson_id === id);
+  const r = (await vrows(ctx)).find((x) => x.lesson_id === id);
   if (!r) throw new HttpError(404, "memory not found");
   const out = redactText(r.text);
   if (!out.detections.length) return { ok: false, id, reason: "nothing sensitive detected (email, phone, card, key, password)" };
   useModel();
-  const nu = await cm.update(id, out.text);
+  const nu = await cm.update(id, out.text, { viewer });
   // a redaction edits the same event: keep its original time so time-based mining (habits, runs) is unaffected
   { const d = new DatabaseSync(join(cfg.dataDir, "memory.db")); try { d.prepare("UPDATE lessons SET created_at=? WHERE lesson_id=?").run(r.created_at, nu.id); } finally { d.close(); } }
   const purged = retr(cfg).hardForget ? await cm.forget(id) : false;
@@ -263,10 +275,11 @@ function auditLog({ cfg, user }: RouteContext) {
   return { items: [...demo, ...chain].sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 100) };
 }
 
-function privacyList({ cfg, user }: RouteContext) {
+async function privacyList(ctx: RouteContext) {
+  const { cfg } = ctx, vis = await vrows(ctx);
   return { hardForget: retr(cfg).hardForget, redaction: retr(cfg).redaction, items: (() => {
     // Sensitive memories first (all of them), then the newest others, capped at 60 rows.
-    const all = rows(cfg, user).reverse().map((r) => ({ id: r.lesson_id, text: r.text, sensitive: redactText(r.text).detections.map((d) => d.detector) }));
+    const all = vis.reverse().map((r) => ({ id: r.lesson_id, text: r.text, sensitive: redactText(r.text).detections.map((d) => d.detector) }));
     const hot = all.filter((m) => m.sensitive.length);
     return [...hot, ...all.filter((m) => !m.sensitive.length).slice(0, Math.max(0, 60 - hot.length))];
   })() };
@@ -357,7 +370,7 @@ const pctl = (xs: number[], p: number) => { if (!xs.length) return null; const s
 /** Entity profile texts (name, aliases, type, key fields) searched alongside memories. */
 const entityDocs = (cm: RouteContext["cm"]) => { try { return cm.entities.list({ limit: 2000 }).map((e) => ({ lesson_id: e.id, text: cm.entities.profileText(e.id) })); } catch { return []; } };
 const mtime = (p: string) => (existsSync(p) ? statSync(p).mtimeMs : 0);
-async function localSemantic({ cm, cfg, user, query }: RouteContext) {
+async function localSemantic({ cm, cfg, user, query, viewer }: RouteContext) {
   const q = String(query.get("q") ?? "").trim().toLowerCase().slice(0, 300);
   if (!q) throw new HttpError(400, "q required");
   const key = `${user}:${mtime(join(cfg.dataDir, "memory.db"))}:${mtime(join(cfg.dataDir, "entities.db-wal"))}:${mtime(join(cfg.dataDir, "entities.db"))}`;
@@ -372,6 +385,9 @@ async function localSemantic({ cm, cfg, user, query }: RouteContext) {
   const { ids, M } = localVecs, D = LOCAL_DIMS, out: { id: string; cos: number }[] = [];
   for (let i = 0; i < ids.length; i++) { let c = 0; for (let k = 0; k < D; k++) c += v![k]! * M[i * D + k]!; out.push({ id: ids[i]!, cos: Number(c.toFixed(4)) }); }
   out.sort((a, b) => b.cos - a.cos);
+  // viewer filter on the ranked ids: memories via the acl, entities via visibleEntityIds
+  const [vm, ve] = [await cm.visibleMemoryIds(viewer), await cm.visibleEntityIds(viewer)];
+  if (vm) for (let i = out.length - 1; i >= 0; i--) if (!vm.has(out[i]!.id) && !ve!.has(out[i]!.id)) out.splice(i, 1);
   return { q, model: LOCAL_MODEL, embedMs: Math.round(embedMs * 10) / 10, hits: out, stats: { n: semLat.length, p50: pctl(semLat, 50), p95: pctl(semLat, 95) } };
 }
 

@@ -1,12 +1,14 @@
 // Route table types shared by the route modules.
 import type { IncomingMessage } from "node:http";
-import type { Clearmind, Config } from "@clearmind/core";
+import type { Clearmind, Config, Viewer } from "@clearmind/core";
 
 export interface RouteContext {
   req: IncomingMessage;
   /** The signed-in user; every call below is scoped to them. */
   user: string;
   cm: Clearmind;
+  /** Who is looking (req.viewer). undefined = unrestricted (single-user / legacy). Pass to every cm read. */
+  viewer?: Viewer | undefined;
   cfg: Config;
   query: URLSearchParams;
   /** Captured groups from a RegExp path. */

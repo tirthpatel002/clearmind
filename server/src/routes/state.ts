@@ -5,9 +5,9 @@ import type { Route, RouteContext } from "./types.js";
 /** Lessons per agent shown on the dashboard. */
 const LESSONS_PER_AGENT = 20;
 
-async function state({ cm, cfg, user, query, isDemo }: RouteContext): Promise<StateResponse> {
+async function state({ cm, cfg, user, query, isDemo, viewer }: RouteContext): Promise<StateResponse> {
   const tz = Number(query.get("tz") ?? 0);
-  const [st, ins, scopes] = [await cm.stats(), await cm.insights(), await cm.scopes()];
+  const [st, ins, scopes] = [await cm.stats(viewer), await cm.insights({ viewer }), await cm.scopes(viewer)];
   const agents = cm.lessonAgents();
   const lessonLists = await Promise.all(
     agents.map(async (a) => {
@@ -41,7 +41,7 @@ async function state({ cm, cfg, user, query, isDemo }: RouteContext): Promise<St
         ...topPattern.map((x) => ({ kind: "pattern" as const, ...x, evidence: x.evidence.slice(0, 5) })),
       ],
     },
-    texts: await cm.textsFor(topIds),
+    texts: await cm.textsFor(topIds, viewer),
     lessons,
     spendUsd: cm.ledger?.total(user) ?? 0,
     limits: { spendCapUsd: cfg.spend.perUserCapUsd, pageSize: cfg.ui.pageSize },

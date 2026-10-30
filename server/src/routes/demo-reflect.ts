@@ -2,7 +2,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { Clearmind, Config } from "@clearmind/core";
+import { ADMIN, WORKSPACE } from "@clearmind/core";
+import type { Clearmind, Config, Viewer } from "@clearmind/core";
 import { mineAll, reconcile, REFLECT_SYSTEM } from "../reflect.js";
 import type { Candidate, Insight, MemRow } from "../reflect.js";
 import type { Route, RouteContext } from "./types.js";
@@ -23,6 +24,21 @@ function allRows(cfg: Config, user: string): DbRow[] {
   try {
     return d.prepare(`SELECT lesson_id,text,created_at,trigger,status,replaced_by,extra FROM lessons WHERE namespace='clearmind' AND user_id=? AND agent_id='owner' AND status IN ('active','replaced') ORDER BY created_at`).all(user) as unknown as DbRow[];
   } finally { d.close(); }
+}
+/** Insights the viewer may see: evidence cut to visible memories; dropped when none is visible or its own memory is hidden. */
+export function visibleInsights(ins: Insight[], vis: Set<string> | null): Insight[] {
+  if (!vis) return ins;
+  return ins.map((i) => ({ ...i, evidence: i.evidence.filter((e) => vis.has(e)) })).filter((i) => i.evidence.length && (!i.memoryId || vis.has(i.memoryId)));
+}
+/** An insight is visible only to principals who can see ALL its evidence: undefined = workspace; no common principal = admin only. */
+export async function insightVisibility(cm: Clearmind, evidence: string[]): Promise<string[] | undefined> {
+  let common = null as Set<string> | null; // null = everyone so far
+  for (const id of evidence) {
+    const to = await cm.visibleToOf(id);
+    if (to.includes(WORKSPACE)) continue;
+    common = common ? new Set([...common].filter((p: string) => to.includes(p))) : new Set(to);
+  }
+  return common === null ? undefined : common.size ? [...common] : [ADMIN];
 }
 const toMem = (r: DbRow): MemRow => ({ id: r.lesson_id, text: r.text, createdAt: r.created_at, tags: String(r.trigger ?? "").split(/\s+/).filter(Boolean) });
 
@@ -64,7 +80,8 @@ export async function reflect(cm: Clearmind, cfg: Config, user: string) {
   const texts = ins.map(memText);
   const vecs = o.embedder ? await o.embedder(texts) : [];
   for (const [k, i] of ins.entries()) {
-    const m = await cm.remember(texts[k]!, { tags: ["insight", i.kind, ...(i.severity ? [`severity-${i.severity}`] : [])], key: `insight:${i.sig}`, embedding: vecs[k] ? Float32Array.from(vecs[k]!) : undefined } as never);
+    const visibleTo = await insightVisibility(cm, i.evidence);
+    const m = await cm.remember(texts[k]!, { tags: ["insight", i.kind, ...(i.severity ? [`severity-${i.severity}`] : [])], key: `insight:${i.sig}`, embedding: vecs[k] ? Float32Array.from(vecs[k]!) : undefined, ...(visibleTo ? { visibleTo } : {}) } as never);
     i.memoryId = (m as { id: string }).id;
   }
   // real cost of this run: every Nebius call it made (wording + insight embeddings), from the spend ledger
@@ -80,12 +97,12 @@ export async function reflect(cm: Clearmind, cfg: Config, user: string) {
 
 // ---------- relations graph ----------
 /** Entities worth a hub on the map: linked to 1..40% of memories (the user themself is everywhere, so not a hub), researched ones always. */
-function entityHubs(cm: RouteContext["cm"], ids: Set<string>, n: number) {
+async function entityHubs(cm: RouteContext["cm"], ids: Set<string>, n: number, viewer?: Viewer) {
   let list: ReturnType<RouteContext["cm"]["entities"]["list"]> = [];
-  try { list = cm.entities.list({ limit: 5000 }); } catch { return []; }
+  try { list = (await cm.entityList({ limit: 5000 }, viewer)).entities; } catch { return []; }
   const out = [];
   for (const e of list) {
-    const d = cm.entities.detail(e.id)!; const mem = d.memoryIds.filter((m) => ids.has(m));
+    const d = (await cm.entityDetail(e.id, viewer))!; const mem = d.memoryIds.filter((m) => ids.has(m));
     const researched = Object.keys(d.fields).length > 0;
     if (!mem.length || (!researched && (mem.length < 2 || mem.length > Math.max(25, n * 0.4)))) continue;
     const fields = Object.fromEntries(Object.entries(d.fields).map(([k, f]) => [k, { value: f.value, sources: f.sources, fetchedAt: f.fetchedAt }]));
@@ -95,9 +112,10 @@ function entityHubs(cm: RouteContext["cm"], ids: Set<string>, n: number) {
   return out.sort((a, b) => b.score - a.score).slice(0, 80);
 }
 const NOT_ENTITY = new Set("Maya Chat Clearmind Journal Meeting Agent Email Action Calendar Profile Team Food Trip Org Breakfast Lunch Woke Around Evening Saturday Sunday Monday Tuesday Wednesday Thursday Friday Sep Oct Nov Dec IST The From Your If Install Installed Stayed Went Decided Agreed Usability Contrast Screen Target Renamed Dark Figma Insight Retired Gym Promotion".split(" "));
-export function graph(cfg: Config, user: string, cm?: RouteContext["cm"]) {
-  const rs = allRows(cfg, user);
-  const { insights } = readInsights(cfg, user);
+export async function graph(cfg: Config, user: string, cm?: RouteContext["cm"], viewer?: Viewer) {
+  const vis = cm ? await cm.visibleMemoryIds(viewer) : null;
+  const rs = vis ? allRows(cfg, user).filter((r) => vis.has(r.lesson_id)) : allRows(cfg, user);
+  const insights = visibleInsights(readInsights(cfg, user).insights, vis);
   const insByMem = new Map(insights.filter((i) => i.memoryId).map((i) => [i.memoryId!, i]));
   const secEvidence = new Set(insights.filter((i) => i.kind === "security" && i.status !== "retired").flatMap((i) => i.evidence));
   const nodes = rs.map((r) => {
@@ -119,16 +137,16 @@ export function graph(cfg: Config, user: string, cm?: RouteContext["cm"]) {
     for (const [to, w] of Object.entries(links)) if (ids.has(to) && r.lesson_id < to) edges.push({ from: r.lesson_id, to, type: "co-used", w: Number(w.toFixed(3)) });
   }
   // entity hubs from the entity store: each entity is a bigger node linked to the memories that mention it
-  const hubs = cm ? entityHubs(cm, ids, rs.length) : [];
+  const hubs = cm ? await entityHubs(cm, ids, rs.length, viewer) : [];
   if (hubs.length) {
     for (const h of hubs) {
       nodes.push(h.node as never);
       for (const m of h.memoryIds) edges.push({ from: h.node.id, to: m, type: "same-entity", label: h.node.name });
     }
     const hubIds = new Set(hubs.map((h) => h.node.id));
-    for (const r of cm!.entities.relations()) if (hubIds.has(r.from) && hubIds.has(r.to)) edges.push({ from: r.from, to: r.to, type: "relation", label: r.predicate });
+    for (const r of await cm!.entityRelations(viewer)) if (hubIds.has(r.from) && hubIds.has(r.to)) edges.push({ from: r.from, to: r.to, type: "relation", label: r.predicate });
     const counts: Record<string, number> = {}; for (const e of edges) counts[e.type] = (counts[e.type] ?? 0) + 1;
-    return { nodes, edges, counts, entities: hubs.map((h) => ({ e: h.node.name, n: h.memoryIds.length, id: h.node.id, type: h.node.kind })).sort((a, b) => b.n - a.n).slice(0, 40), entityCounts: cm!.entities.counts() };
+    return { nodes, edges, counts, entities: hubs.map((h) => ({ e: h.node.name, n: h.memoryIds.length, id: h.node.id, type: h.node.kind })).sort((a, b) => b.n - a.n).slice(0, 40), entityCounts: (await cm!.entityList({ limit: 1 }, viewer)).counts };
   }
   // fallback without an entity store: proper nouns or domains shared by 2..25 memories, chained in time
   const ent = new Map<string, string[]>();
@@ -149,10 +167,11 @@ export const reflectRoutes: Route[] = [
     if (w.balanceUsd < MIN_BALANCE_USD) throw new HttpError(402, `Demo credit balance $${w.balanceUsd.toFixed(4)} is too low to run reflect. Top up demo credits first.`);
     useModel(); return reflect(cm, cfg, user);
   } },
-  { method: "GET", path: "/api/demo/insights", handle: ({ cfg, user }: RouteContext) => {
-    const r = readInsights(cfg, user); const text = new Map(allRows(cfg, user).map((x) => [x.lesson_id, x.text]));
-    return { ...r, insights: r.insights.map((i) => ({ ...i, evidenceText: i.evidence.map((id) => ({ id, text: text.get(id) ?? "(deleted)" })) })) };
+  { method: "GET", path: "/api/demo/insights", handle: async ({ cfg, user, cm, viewer }: RouteContext) => {
+    const vis = await cm.visibleMemoryIds(viewer);
+    const r = readInsights(cfg, user); const text = new Map(allRows(cfg, user).filter((x) => !vis || vis.has(x.lesson_id)).map((x) => [x.lesson_id, x.text]));
+    return { ...r, insights: visibleInsights(r.insights, vis).map((i) => ({ ...i, evidenceText: i.evidence.map((id) => ({ id, text: text.get(id) ?? "(deleted)" })) })) };
   } },
-  { method: "GET", path: "/api/demo/graph", handle: ({ cfg, user, cm }: RouteContext) => graph(cfg, user, cm) },
+  { method: "GET", path: "/api/demo/graph", handle: ({ cfg, user, cm, viewer }: RouteContext) => graph(cfg, user, cm, viewer) },
 ];
 export const hasInsights = (cfg: Config, user: string) => existsSync(insightFile(cfg, user));

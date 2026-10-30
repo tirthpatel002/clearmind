@@ -5,6 +5,6 @@ export const graphRoutes: Route[] = [
   {
     method: "GET",
     path: "/api/graph",
-    handle: ({ cm, query }) => cm.graph({ scope: query.get("scope") ?? undefined }),
+    handle: ({ cm, query, viewer }) => cm.graph({ scope: query.get("scope") ?? undefined, viewer }),
   },
 ];
